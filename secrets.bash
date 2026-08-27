@@ -79,6 +79,7 @@ cmd_secrets_usage() {
 	                                    vários diretórios, e vice-versa)
 	    mask dir <dir>                 lista aliases associados a um diretório
 	    mask word <termo> [contexto]   busca um alias/diretório no .mask.gpg
+            mask edit                      abre o .mask.gpg no vim (via vim-gnupg)
 	    mask list                      lista todo o conteúdo do .mask.gpg
 
 	More information may be found in the pass-secrets(1) man page.
