@@ -27,13 +27,21 @@
 #   pass secrets <identidade> count   <bloco>
 #   pass secrets <identidade> edit
 #   pass secrets <identidade> check
+#   pass secrets <identidade> struct
 #   pass secrets <identidade> add     <caminho-relativo> <nome-real>
 #   pass secrets <identidade> rebuild [--yes] [--prune]
+#   pass secrets <identidade> mask add  <alias-email> <caminho-dir>
+#   pass secrets <identidade> mask dir  <caminho-dir>
+#   pass secrets <identidade> mask word <termo> [contexto]
+#   pass secrets <identidade> mask edit
+#   pass secrets <identidade> mask list
+#   pass secrets <identidade> namegen [bloco] [-n tamanho] [-u quantidade]
+#   pass secrets <identidade> generate [bloco] [tamanho] [flags do pass generate]
 #
 # Formato do mapa (.secrets.gpg, texto plano antes de cifrar):
 #   <caminho-do-codinome-relativo-a-identidade> = <nome real / descrição>
 
-readonly VERSION_SECRETS="2.0.0"
+readonly VERSION_SECRETS="2.1.0"
 
 cmd_secrets_version() {
 	echo "$VERSION_SECRETS"
@@ -55,7 +63,10 @@ cmd_secrets_usage() {
 	    $PROGRAM $COMMAND <identidade> mask add  <alias-email> <caminho-dir>
 	    $PROGRAM $COMMAND <identidade> mask dir  <caminho-dir>
 	    $PROGRAM $COMMAND <identidade> mask word <termo> [contexto]
+	    $PROGRAM $COMMAND <identidade> mask edit
 	    $PROGRAM $COMMAND <identidade> mask list
+	    $PROGRAM $COMMAND <identidade> namegen  [bloco] [-n tamanho] [-u quantidade]
+	    $PROGRAM $COMMAND <identidade> generate [bloco] [tamanho] [flags do pass generate]
 
 	identidade:
 	    qualquer diretório da árvore do pass que contenha seu próprio
@@ -79,8 +90,14 @@ cmd_secrets_usage() {
 	                                    vários diretórios, e vice-versa)
 	    mask dir <dir>                 lista aliases associados a um diretório
 	    mask word <termo> [contexto]   busca um alias/diretório no .mask.gpg
-            mask edit                      abre o .mask.gpg no vim (via vim-gnupg)
+	    mask edit                      abre o .mask.gpg no vim (via vim-gnupg)
 	    mask list                      lista todo o conteúdo do .mask.gpg
+	    namegen [bloco] [-n L] [-u Q]  sugere Q codinome(s) livre(s) de tamanho L,
+	                                    sem criar nada (colisão checada só dentro
+	                                    da identidade; entre identidades pode repetir)
+	    generate [bloco] [tamanho]     gera um codinome livre E já cria a entrada
+	                                    real via 'pass generate' — não registra a
+	                                    associação (use 'add' depois)
 
 	More information may be found in the pass-secrets(1) man page.
 	_EOF
@@ -356,27 +373,27 @@ cmd_secrets_mask_list() {
 }
 
 cmd_secrets_mask_edit() {
-    local nome="$1"
-    local mapfile
-    mapfile=$(_secrets_mapfile "$nome" .mask.gpg) || exit 1
-    command -v vim >/dev/null || die "$PROGRAM $COMMAND: vim não encontrado"
+	local nome="$1"
+	local mapfile
+	mapfile=$(_secrets_mapfile "$nome" .mask.gpg) || exit 1
+	command -v vim >/dev/null || die "$PROGRAM $COMMAND: vim não encontrado"
 
-    if [[ ! -f "$mapfile" ]]; then
-        echo "$PROGRAM $COMMAND: '$mapfile' ainda não existe — vim-gnupg vai pedir o destinatário GPG ao salvar" >&2
-    fi
+	if [[ ! -f "$mapfile" ]]; then
+		echo "$PROGRAM $COMMAND: '$mapfile' ainda não existe — vim-gnupg vai pedir o destinatário GPG ao salvar" >&2
+	fi
 
-    set_git "$mapfile"
-    vim -- "$mapfile"
-    local ret=$?
+	set_git "$mapfile"
+	vim -- "$mapfile"
+	local ret=$?
 
-    if [[ -f "$mapfile" ]]; then
-        local perms
-        perms=$(stat -c '%a' "$mapfile")
-        [[ "$perms" == "640" || "$perms" == "600" ]] || \
-            echo "$PROGRAM $COMMAND: aviso — permissões de '$mapfile' mudaram para $perms, restaure para 640" >&2
-        git_add_file "$mapfile" "Edit mask map for $nome using ${EDITOR:-vi}."
-    fi
-    return "$ret"
+	if [[ -f "$mapfile" ]]; then
+		local perms
+		perms=$(stat -c '%a' "$mapfile")
+		[[ "$perms" == "640" || "$perms" == "600" ]] || \
+			echo "$PROGRAM $COMMAND: aviso — permissões de '$mapfile' mudaram para $perms, restaure para 640" >&2
+		git_add_file "$mapfile" "Edit mask map for $nome using ${EDITOR:-vi}."
+	fi
+	return "$ret"
 }
 
 cmd_secrets_mask() {
@@ -388,8 +405,40 @@ cmd_secrets_mask() {
 		word) cmd_secrets_mask_word "$nome" "$@" ;;
 		list) cmd_secrets_mask_list "$nome" "$@" ;;
 		edit) cmd_secrets_mask_edit "$nome" "$@" ;;
-		*) die "$PROGRAM $COMMAND: subcomando de mask desconhecido '$sub' (use: add|dir|word|list)" ;;
+		*) die "$PROGRAM $COMMAND: subcomando de mask desconhecido '$sub' (use: add|dir|word|edit|list)" ;;
 	esac
+}
+
+# Audita o .mask.gpg contra a árvore real: cada linha aponta pra um
+# DIRETÓRIO (não um arquivo), então a checagem é só "esse diretório
+# ainda existe?". Somente leitura — nunca edita nem remove nada, só
+# avisa. Roda dentro de check/rebuild, igual a checagem de colisão.
+_secrets_check_mask_orphans() {
+	local dir="$1"
+	local mf="$dir/.mask.gpg"
+	[[ -f "$mf" ]] || return 0
+
+	local content
+	content=$($GPG -d "${GPG_OPTS[@]}" "$mf" 2>/dev/null) || {
+		echo "$PROGRAM $COMMAND: aviso — falha ao decifrar .mask.gpg para checagem de órfãos" >&2
+		return 1
+	}
+
+	local -a orfas=()
+	local linha alvo
+	while IFS= read -r linha; do
+		[[ "$linha" =~ ^([^=]+)=(.*)$ ]] || continue
+		alvo="${BASH_REMATCH[2]# }"
+		alvo="${alvo% }"
+		[[ -n "$alvo" && -d "$dir/$alvo" ]] || orfas+=("$linha")
+	done <<< "$content"
+
+	if [[ ${#orfas[@]} -gt 0 ]]; then
+		{
+			echo "$PROGRAM $COMMAND: mask — entradas apontando para diretório que não existe mais:"
+			printf '  %s\n' "${orfas[@]}"
+		} >&2
+	fi
 }
 
 # ---------------------------------------------------------------------
@@ -506,6 +555,8 @@ cmd_secrets_rebuild() {
 	local dir
 	dir=$(_secrets_resolve "$nome") || exit 1
 
+	_secrets_check_mask_orphans "$dir"
+
 	local old_content=""
 	local mf="$dir/.secrets.gpg"
 	[[ -f "$mf" ]] && { old_content=$(_secrets_load "$nome") || exit 1; }
@@ -582,6 +633,111 @@ cmd_secrets_rebuild() {
 }
 
 # ---------------------------------------------------------------------
+# Geração de codinomes
+# ---------------------------------------------------------------------
+
+# Gera uma palavra-código pronunciável (consoante/vogal alternado),
+# nada de ruído tipo "asdcf". Reaproveita o estilo do script original.
+_secrets_generate_word() {
+	local len="${1:-5}"
+	local consonants="bcdfglmnprstvz"
+	local vowels="aeiou"
+	local word="" start i
+
+	(( RANDOM % 2 == 0 )) && start=0 || start=1
+	for (( i=0; i<len; i++ )); do
+		if (( (i + start) % 2 == 0 )); then
+			word+="${consonants:RANDOM % ${#consonants}:1}"
+		else
+			word+="${vowels:RANDOM % ${#vowels}:1}"
+		fi
+	done
+	printf '%s\n' "${word^}"
+}
+
+# Gera um codinome livre (sem colisão) dentro de <identidade>/<bloco>.
+# Colisão só importa DENTRO da mesma identidade — dois arquivos com o
+# mesmo nome na mesma pasta seria sobrescrita real. Repetir o nome
+# entre identidades diferentes é aceitável (trade-off aceito: quebrar
+# uma árvore não compromete a associação de serviço das demais).
+_secrets_free_codename() {
+	local dir="$1" bloco="$2" len="$3"
+	local tentativas=0 palavra caminho
+
+	while (( tentativas < 50 )); do
+		palavra=$(_secrets_generate_word "$len")
+		if [[ -n "$bloco" && "$bloco" != "." ]]; then
+			caminho="$bloco/$palavra"
+		else
+			caminho="$palavra"
+		fi
+		[[ -e "$dir/$caminho.gpg" || -e "$dir/$caminho" ]] || { printf '%s\n' "$caminho"; return 0; }
+		(( tentativas++ ))
+	done
+	die "$PROGRAM $COMMAND: não foi possível gerar um codinome livre após $tentativas tentativas"
+}
+
+# Modo manual — só sugere nome(s) livre(s), não cria nada. Útil quando
+# você quer decidir na hora o que fazer com o nome (criar via 'pass
+# insert', usar em outro lugar, etc).
+cmd_secrets_namegen() {
+	local nome="$1"; shift
+	local bloco="." len=5 qtd=1
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+			-n) len="$2"; shift 2 ;;
+			-u) qtd="$2"; shift 2 ;;
+			*) bloco="$1"; shift ;;
+		esac
+	done
+	[[ "$len" =~ ^[0-9]+$ && "$len" -gt 0 ]] || die "$PROGRAM $COMMAND: tamanho inválido"
+	[[ "$qtd" =~ ^[0-9]+$ && "$qtd" -gt 0 ]] || die "$PROGRAM $COMMAND: quantidade inválida"
+
+	local dir
+	dir=$(_secrets_resolve "$nome") || exit 1
+
+	local i
+	for (( i=0; i<qtd; i++ )); do
+		_secrets_free_codename "$dir" "$bloco" "$len"
+	done
+}
+
+# Modo automatizado — gera um codinome livre E já cria a entrada real
+# via cmd_generate (a função de verdade do próprio pass, com
+# GPG/git/clipboard nativos, não uma reimplementação). NÃO registra a
+# associação no .secrets.gpg — isso continua manual via 'add', de
+# propósito: você só sabe o nome real depois de decidir o que vai
+# guardar ali.
+cmd_secrets_generate() {
+	local nome="$1"; shift
+	local bloco="${1:-.}"
+	[[ $# -gt 0 ]] && shift
+
+	local len="$GENERATED_LENGTH"
+	if [[ "$1" =~ ^[0-9]+$ ]]; then
+		len="$1"
+		shift
+	fi
+	# "$@" daqui pra frente são só flags remanescentes do pass generate
+	# (--no-symbols, --clip, --qrcode, etc), repassadas como estão.
+
+	[[ -n "$bloco" && "$bloco" != "." ]] && { _secrets_valid_token "$bloco" || die "$PROGRAM $COMMAND: bloco inválido"; }
+
+	local dir
+	dir=$(_secrets_resolve "$nome") || exit 1
+
+	local caminho_relativo
+	caminho_relativo=$(_secrets_free_codename "$dir" "$bloco" 5)
+
+	local caminho_pass="${dir#$PREFIX/}/$caminho_relativo"
+
+	cmd_generate "$@" "$caminho_pass" "$len"
+
+	echo "$PROGRAM $COMMAND: codinome gerado — '$caminho_relativo' (em '$nome')" >&2
+	echo "$PROGRAM $COMMAND: para registrar a associação: $PROGRAM $COMMAND $nome add '$caminho_relativo' '<nome real>'" >&2
+}
+
+# ---------------------------------------------------------------------
 # Dispatcher (arquivo é sourced pelo pass com "$@" = args após "secrets")
 # ---------------------------------------------------------------------
 
@@ -600,8 +756,10 @@ case "$SUBCMD" in
 	check)    cmd_secrets_rebuild "$IDENTIDADE" --dry-run "$@" ;;
 	struct)   cmd_secrets_struct "$IDENTIDADE" "$@" ;;
 	mask)     cmd_secrets_mask "$IDENTIDADE" "$@" ;;
+	namegen)  cmd_secrets_namegen "$IDENTIDADE" "$@" ;;
+	generate) cmd_secrets_generate "$IDENTIDADE" "$@" ;;
 	version|--version) cmd_secrets_version ;;
 	""|-h|--help|help) cmd_secrets_usage; exit 1 ;;
-	*) die "$PROGRAM $COMMAND: comando desconhecido '$SUBCMD' (use: dir|word|count|edit|check|add|rebuild)" ;;
+	*) die "$PROGRAM $COMMAND: comando desconhecido '$SUBCMD' (use: dir|word|count|edit|check|struct|add|rebuild|mask|namegen|generate)" ;;
 esac
 exit 0
