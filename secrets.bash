@@ -113,6 +113,15 @@ _secrets_valid_token() {
 	[[ "$1" =~ ^[A-Za-z0-9_./-]+$ ]] && [[ "$1" != *..* ]]
 }
 
+# Escapa '.' antes de inserir um token do usuário num padrão grep -E.
+# Necessário porque _secrets_valid_token permite '.' no token, mas em
+# ERE '.' significa "qualquer caractere" — sem isso, um caminho com
+# ponto pode casar (e em 'add', sobrescrever) uma entrada diferente
+# por acidente.
+_secrets_re_escape() {
+	printf '%s' "${1//./\\.}"
+}
+
 # Encontra o diretório de uma identidade pelo nome, em qualquer
 # profundidade. Recusa se ambíguo (mais de um .gpg-id com esse nome).
 _secrets_resolve() {
@@ -226,7 +235,9 @@ cmd_secrets_dir() {
 
 	local content out
 	content=$(_secrets_load "$nome") || exit 1
-	out=$(grep -E "^${bloco}(/[^=]*)?[[:space:]]*=" <<< "$content")
+	local bloco_esc
+	bloco_esc=$(_secrets_re_escape "$bloco")
+	out=$(grep -E "^${bloco_esc}(/[^=]*)?[[:space:]]*=" <<< "$content")
 	[[ -n "$out" ]] || die "$PROGRAM $COMMAND: nenhuma entrada sob '$bloco' no mapa de '$nome'"
 	printf '%s\n' "$out"
 }
@@ -300,9 +311,11 @@ cmd_secrets_add() {
 	mf=$(_secrets_mapfile "$nome") || exit 1
 	[[ -f "$mf" ]] && { content=$(_secrets_load "$nome") || exit 1; }
 
-	if grep -qE "^${caminho}[[:space:]]*=" <<< "$content"; then
+	local caminho_esc
+	caminho_esc=$(_secrets_re_escape "$caminho")
+	if grep -qE "^${caminho_esc}[[:space:]]*=" <<< "$content"; then
 		yesno "$PROGRAM $COMMAND: '$caminho' já tem associação em '$nome'. Sobrescrever?"
-		content=$(grep -vE "^${caminho}[[:space:]]*=" <<< "$content")
+		content=$(grep -vE "^${caminho_esc}[[:space:]]*=" <<< "$content")
 	fi
 
 	content="$(printf '%s\n%s = %s\n' "$content" "$caminho" "$nome_real" | sed '/^$/d' | sort -u)"
@@ -335,7 +348,7 @@ cmd_secrets_mask_add() {
 	[[ -f "$mf" ]] && { content=$(_secrets_load "$nome" .mask.gpg) || exit 1; }
 
 	content="$(printf '%s\n%s = %s\n' "$content" "$alias_email" "$caminho_dir" | sed '/^$/d' | sort -u)"
-	_secrets_save "$nome" "$content" "Add mask association for $alias_email in $nome." .mask.gpg
+	_secrets_save "$nome" "$content" "Add mask association in $nome." .mask.gpg
 }
 
 cmd_secrets_mask_dir() {
@@ -345,7 +358,9 @@ cmd_secrets_mask_dir() {
 
 	local content out
 	content=$(_secrets_load "$nome" .mask.gpg) || exit 1
-	out=$(grep -E "=[[:space:]]*${caminho_dir}\$" <<< "$content")
+	local dir_esc
+	dir_esc=$(_secrets_re_escape "$caminho_dir")
+	out=$(grep -E "=[[:space:]]*${dir_esc}\$" <<< "$content")
 	[[ -n "$out" ]] || die "$PROGRAM $COMMAND: nenhum alias associado a '$caminho_dir' no mapa de '$nome'"
 	printf '%s\n' "$out"
 }
