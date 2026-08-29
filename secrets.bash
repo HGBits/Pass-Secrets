@@ -58,9 +58,9 @@ cmd_secrets_usage() {
 	    $PROGRAM $COMMAND <identidade> edit
 	    $PROGRAM $COMMAND <identidade> check
 	    $PROGRAM $COMMAND <identidade> struct
-	    $PROGRAM $COMMAND <identidade> add     <caminho-relativo> <nome-real>
+	    $PROGRAM $COMMAND <identidade> add     <caminho-relativo>
 	    $PROGRAM $COMMAND <identidade> rebuild [--yes] [--prune]
-	    $PROGRAM $COMMAND <identidade> mask add  <alias-email> <caminho-dir>
+	    $PROGRAM $COMMAND <identidade> mask add  <caminho-dir>
 	    $PROGRAM $COMMAND <identidade> mask dir  <caminho-dir>
 	    $PROGRAM $COMMAND <identidade> mask word <termo> [contexto]
 	    $PROGRAM $COMMAND <identidade> mask edit
@@ -81,13 +81,15 @@ cmd_secrets_usage() {
 	    edit                           abre o .secrets.gpg no vim (via vim-gnupg)
 	    check                          audita o mapa contra a árvore real (somente leitura)
 	    struct                         lista a estrutura real de codinomes (scan do disco, sem decifrar)
-	    add     <caminho> <nome-real>  associa manualmente um codinome já existente
+	    add     <caminho>              associa manualmente um codinome já existente
+	                                    (nome real é pedido via prompt, nunca por
+	                                    argumento — evita ficar no histórico do shell)
 	    rebuild [--yes] [--prune]      varre a árvore real e reconcilia o mapa
 	                                       --yes:   não pergunta nome real p/ entradas novas
 	                                       --prune: remove entradas órfãs do mapa
-	    mask add <alias> <dir>         associa um alias de e-mail a um diretório
-	                                    (many-to-many: mesmo alias pode servir
-	                                    vários diretórios, e vice-versa)
+	    mask add <dir>                  associa um alias de e-mail (pedido via
+	                                    prompt) a um diretório (many-to-many: mesmo
+	                                    alias pode servir vários diretórios, e vice-versa)
 	    mask dir <dir>                 lista aliases associados a um diretório
 	    mask word <termo> [contexto]   busca um alias/diretório no .mask.gpg
 	    mask edit                      abre o .mask.gpg no vim (via vim-gnupg)
@@ -182,6 +184,14 @@ _secrets_recipients() {
 	local dir
 	dir=$(_secrets_resolve "$nome") || exit 1
 
+	# Mesma verificação que set_gpg_recipients já faz no pass original:
+	# se PASSWORD_STORE_SIGNING_KEY estiver configurado, exige um
+	# .gpg-id.sig válido de uma chave confiável antes de aceitar o
+	# conteúdo. Sem a env var, verify_file é no-op — comportamento
+	# idêntico ao pass. Escopado ao .gpg-id EXATO desta identidade, não
+	# sobe a árvore como set_gpg_recipients faria.
+	verify_file "$dir/.gpg-id"
+
 	local -a args=()
 	local id
 	while IFS= read -r id; do
@@ -213,9 +223,19 @@ _secrets_save() {
 	dir=$(_secrets_resolve "$nome") || exit 1
 	local mapfile="$dir/$nomearq"
 
+	local recipients_raw
+	recipients_raw=$(_secrets_recipients "$nome") || exit 1
+
 	local -a recip=()
 	local linha_recip
-	while IFS= read -r linha_recip; do recip+=("$linha_recip"); done < <(_secrets_recipients "$nome") || exit 1
+	while IFS= read -r linha_recip; do recip+=("$linha_recip"); done <<< "$recipients_raw"
+
+	# Trava explícita: nunca cifrar sem destinatário. Sem isso, um gpg-
+	# agent com 'default-recipient' configurado no gpg.conf cifraria
+	# silenciosamente para a chave padrão do sistema em vez da chave da
+	# identidade, caso _secrets_recipients falhe silenciosamente por
+	# qualquer motivo — quebrando o isolamento por identidade.
+	[[ ${#recip[@]} -gt 0 ]] || die "$PROGRAM $COMMAND: nenhum destinatário GPG resolvido para '$nome' — abortando para não cifrar com chave padrão do sistema"
 
 	set_git "$mapfile"
 	printf '%s\n' "$conteudo" | $GPG -e "${recip[@]}" -o "$mapfile" "${GPG_OPTS[@]}" || \
@@ -230,8 +250,9 @@ _secrets_save() {
 
 cmd_secrets_dir() {
 	local nome="$1" bloco="$2"
-	[[ -n "$bloco" ]] && _secrets_valid_token "$bloco" || \
+	if [[ -z "$bloco" ]] || ! _secrets_valid_token "$bloco"; then
 		die "Usage: $PROGRAM $COMMAND <identidade> dir <bloco>"
+	fi
 
 	local content out
 	content=$(_secrets_load "$nome") || exit 1
@@ -294,9 +315,9 @@ cmd_secrets_edit() {
 # ---------------------------------------------------------------------
 
 cmd_secrets_add() {
-	local nome="$1" caminho="$2" nome_real="$3"
-	[[ -n "$nome" && -n "$caminho" && -n "$nome_real" ]] || \
-		die "Usage: $PROGRAM $COMMAND <identidade> add <caminho-relativo> <nome-real>"
+	local nome="$1" caminho="$2"
+	[[ -n "$nome" && -n "$caminho" ]] || \
+		die "Usage: $PROGRAM $COMMAND <identidade> add <caminho-relativo>"
 	check_sneaky_paths "$caminho"
 	_secrets_valid_token "$caminho" || die "$PROGRAM $COMMAND: caminho inválido"
 
@@ -318,6 +339,13 @@ cmd_secrets_add() {
 		content=$(grep -vE "^${caminho_esc}[[:space:]]*=" <<< "$content")
 	fi
 
+	# Nome real nunca é aceito como argumento de CLI — mesma decisão do
+	# pass original para senhas definidas manualmente (cmd_insert): dado
+	# sensível só entra via prompt, nunca via argv/histórico do shell.
+	local nome_real
+	read -r -p "Nome real para '$caminho': " nome_real
+	[[ -n "$nome_real" ]] || die "$PROGRAM $COMMAND: nome real vazio, nada foi salvo"
+
 	content="$(printf '%s\n%s = %s\n' "$content" "$caminho" "$nome_real" | sed '/^$/d' | sort -u)"
 	_secrets_save "$nome" "$content" "Add secrets association for $caminho in $nome."
 }
@@ -330,9 +358,9 @@ cmd_secrets_add() {
 # ---------------------------------------------------------------------
 
 cmd_secrets_mask_add() {
-	local nome="$1" alias_email="$2" caminho_dir="$3"
-	[[ -n "$nome" && -n "$alias_email" && -n "$caminho_dir" ]] || \
-		die "Usage: $PROGRAM $COMMAND <identidade> mask add <alias-email> <caminho-dir>"
+	local nome="$1" caminho_dir="$2"
+	[[ -n "$nome" && -n "$caminho_dir" ]] || \
+		die "Usage: $PROGRAM $COMMAND <identidade> mask add <caminho-dir>"
 	check_sneaky_paths "$caminho_dir"
 	_secrets_valid_token "$caminho_dir" || die "$PROGRAM $COMMAND: caminho de diretório inválido"
 
@@ -347,14 +375,22 @@ cmd_secrets_mask_add() {
 	mf=$(_secrets_mapfile "$nome" .mask.gpg) || exit 1
 	[[ -f "$mf" ]] && { content=$(_secrets_load "$nome" .mask.gpg) || exit 1; }
 
+	# Alias de e-mail nunca é aceito como argumento de CLI — mesma
+	# decisão do pass original para dado sensível definido manualmente:
+	# só entra via prompt, nunca via argv/histórico do shell.
+	local alias_email
+	read -r -p "Alias de e-mail para associar a '$caminho_dir': " alias_email
+	[[ -n "$alias_email" ]] || die "$PROGRAM $COMMAND: alias vazio, nada foi salvo"
+
 	content="$(printf '%s\n%s = %s\n' "$content" "$alias_email" "$caminho_dir" | sed '/^$/d' | sort -u)"
 	_secrets_save "$nome" "$content" "Add mask association in $nome." .mask.gpg
 }
 
 cmd_secrets_mask_dir() {
 	local nome="$1" caminho_dir="$2"
-	[[ -n "$caminho_dir" ]] && _secrets_valid_token "$caminho_dir" || \
+	if [[ -z "$caminho_dir" ]] || ! _secrets_valid_token "$caminho_dir"; then
 		die "Usage: $PROGRAM $COMMAND <identidade> mask dir <caminho-dir>"
+	fi
 
 	local content out
 	content=$(_secrets_load "$nome" .mask.gpg) || exit 1
@@ -502,7 +538,7 @@ _secrets_check_collisions() {
 		if [[ "$count" -gt 1 ]]; then
 			{
 				echo "$PROGRAM $COMMAND: aviso — nome de identidade '$nome' está duplicado na árvore:"
-				sed 's/^/  /' <<< "$linhas"
+				while IFS= read -r linha_dup; do printf '  %s\n' "$linha_dup"; done <<< "$linhas"
 			} >&2
 		fi
 	done
@@ -744,7 +780,7 @@ cmd_secrets_generate() {
 	local caminho_relativo
 	caminho_relativo=$(_secrets_free_codename "$dir" "$bloco" 5)
 
-	local caminho_pass="${dir#$PREFIX/}/$caminho_relativo"
+	local caminho_pass="${dir#"$PREFIX"/}/$caminho_relativo"
 
 	cmd_generate "$@" "$caminho_pass" "$len"
 
