@@ -41,7 +41,7 @@
 # Formato do mapa (.secrets.gpg, texto plano antes de cifrar):
 #   <caminho-do-codinome-relativo-a-identidade> = <nome real / descrição>
 
-readonly VERSION_SECRETS="2.2.0"
+readonly VERSION_SECRETS="2.3.0"
 
 cmd_secrets_version() {
 	echo "$VERSION_SECRETS"
@@ -694,7 +694,16 @@ cmd_secrets_rebuild() {
 		if [[ $auto_yes -eq 1 || $dry_run -eq 1 ]]; then
 			nome_real="(pendente)"
 		else
-			read -r -p "Nome real para '$caminho'? " nome_real
+			# 'read -p' só EXIBE o prompt se stdin for terminal, mas ainda
+			# assim tenta ler — sem stdin interativo (EOF), read falha e
+			# nome_real fica vazio. Sem checar o retorno de read, isso era
+			# indistinguível de "usuário só apertou Enter": os dois caíam
+			# silenciosamente em (pendente), como se --yes tivesse sido
+			# passado, sem nenhum aviso. Agora EOF interrompe com erro
+			# explícito; só um Enter vazio de verdade vira (pendente).
+			if ! read -r -p "Nome real para '$caminho'? " nome_real; then
+				die "$PROGRAM $COMMAND: entrada padrão terminou (EOF) antes de perguntar o nome real de '$caminho' — nada foi salvo. Rode com --yes ou responda a partir de um terminal interativo."
+			fi
 			[[ -n "$nome_real" ]] || nome_real="(pendente)"
 		fi
 		content="$(printf '%s\n%s = %s' "$content" "$caminho" "$nome_real")"
