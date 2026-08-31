@@ -41,7 +41,7 @@
 # Formato do mapa (.secrets.gpg, texto plano antes de cifrar):
 #   <caminho-do-codinome-relativo-a-identidade> = <nome real / descrição>
 
-readonly VERSION_SECRETS="2.1.0"
+readonly VERSION_SECRETS="2.2.0"
 
 cmd_secrets_version() {
 	echo "$VERSION_SECRETS"
@@ -78,7 +78,8 @@ cmd_secrets_usage() {
 	    dir     <bloco>                lista entradas cujo caminho começa com <bloco>
 	    word    <termo> [contexto]     busca um termo no mapa (grep -C)
 	    count   <bloco>                conta entradas sob <bloco>
-	    edit                           abre o .secrets.gpg no vim (via vim-gnupg)
+	    edit                           edita o .secrets.gpg (decifra pra /dev/shm,
+	                                    abre com $EDITOR, recifra — sem plugin externo)
 	    check                          audita o mapa contra a árvore real (somente leitura)
 	    struct                         lista a estrutura real de codinomes (scan do disco, sem decifrar)
 	    add     <caminho>              associa manualmente um codinome já existente
@@ -92,14 +93,18 @@ cmd_secrets_usage() {
 	                                    alias pode servir vários diretórios, e vice-versa)
 	    mask dir <dir>                 lista aliases associados a um diretório
 	    mask word <termo> [contexto]   busca um alias/diretório no .mask.gpg
-	    mask edit                      abre o .mask.gpg no vim (via vim-gnupg)
+	    mask edit                      edita o .mask.gpg (mesmo mecanismo do edit acima)
 	    mask list                      lista todo o conteúdo do .mask.gpg
 	    namegen [bloco] [-n L] [-u Q]  sugere Q codinome(s) livre(s) de tamanho L,
 	                                    sem criar nada (colisão checada só dentro
-	                                    da identidade; entre identidades pode repetir)
+	                                    da identidade; entre identidades pode repetir).
+	                                    Bloco que atravessa outra identidade aninhada
+	                                    é recusado.
 	    generate [bloco] [tamanho]     gera um codinome livre E já cria a entrada
 	                                    real via 'pass generate' — não registra a
-	                                    associação (use 'add' depois)
+	                                    associação (use 'add' depois). Bloco que
+	                                    atravessa outra identidade aninhada é
+	                                    recusado (evita cifrar com a chave errada).
 
 	More information may be found in the pass-secrets(1) man page.
 	_EOF
@@ -170,8 +175,8 @@ _secrets_mapfile() {
 	if [[ -f "$mapfile" ]]; then
 		local perms
 		perms=$(stat -c '%a' "$mapfile")
-		[[ "$perms" == "640" || "$perms" == "600" ]] || \
-			die "$PROGRAM $COMMAND: permissões inseguras em '$mapfile' ($perms) — corrija para 640 ou 600"
+		[[ "$perms" == "600" ]] || \
+			die "$PROGRAM $COMMAND: permissões inseguras em '$mapfile' ($perms) — corrija para 600"
 	fi
 	printf '%s\n' "$mapfile"
 }
@@ -240,8 +245,41 @@ _secrets_save() {
 	set_git "$mapfile"
 	printf '%s\n' "$conteudo" | $GPG -e "${recip[@]}" -o "$mapfile" "${GPG_OPTS[@]}" || \
 		die "$PROGRAM $COMMAND: falha ao cifrar o mapa de '$nome'"
-	chmod 640 "$mapfile" 2>/dev/null
+	chmod 600 "$mapfile" 2>/dev/null
 	git_add_file "$mapfile" "$msg"
+}
+
+# ---------------------------------------------------------------------
+# Fronteira de identidade aninhada para bloco/caminho (v2.2.0)
+# ---------------------------------------------------------------------
+#
+# Recusa um bloco/caminho relativo que atravesse o diretório de outra
+# identidade (outro .gpg-id) entre o diretório da identidade resolvida
+# e o destino final.
+#
+# Motivo: 'generate' delega a criação do arquivo real ao cmd_generate
+# NATIVO do pass (reaproveitado, não reimplementado). Esse cmd_generate
+# resolve destinatário via set_gpg_recipients, que SOBE a árvore a
+# partir do diretório do arquivo até achar o primeiro .gpg-id — o
+# oposto do que _secrets_recipients faz (lê só o .gpg-id exato da
+# identidade, nunca sobe). _secrets_valid_token aceita '/' no bloco, e
+# nada impedia 'pass secrets HG generate NestedIdent/bloco' de gerar um
+# arquivo dentro de uma identidade aninhada de verdade — nesse caso o
+# cmd_generate nativo cifra com a chave de NestedIdent, não a de HG,
+# silenciosamente e sem erro, quebrando a garantia central do projeto
+# de que identidade aninhada é fronteira de confiança independente.
+# Confirmado com prova prática antes do fix.
+_secrets_check_no_nested_crossing() {
+	local dir="$1" bloco="$2"
+	[[ -n "$bloco" && "$bloco" != "." ]] || return 0
+	local IFS='/' comp partial="$dir"
+	for comp in $bloco; do
+		[[ -n "$comp" ]] || continue
+		partial="$partial/$comp"
+		if [[ -f "$partial/.gpg-id" ]]; then
+			die "$PROGRAM $COMMAND: bloco '$bloco' atravessa a identidade aninhada '$comp' — recusado (isso cifraria/procuraria com a chave errada)"
+		fi
+	done
 }
 
 # ---------------------------------------------------------------------
@@ -286,33 +324,67 @@ cmd_secrets_word() {
 }
 
 cmd_secrets_edit() {
-	local nome="$1"
-	local mapfile
-	mapfile=$(_secrets_mapfile "$nome") || exit 1
-	command -v vim >/dev/null || die "$PROGRAM $COMMAND: vim não encontrado"
-
-	if [[ ! -f "$mapfile" ]]; then
-		echo "$PROGRAM $COMMAND: '$mapfile' ainda não existe — vim-gnupg vai pedir o destinatário GPG ao salvar (confirme que é o mesmo do .gpg-id local, ou use 'rebuild'/'add' para criar automaticamente)" >&2
-	fi
-
-	set_git "$mapfile"
-
-	vim -- "$mapfile"
-	local ret=$?
-
-	if [[ -f "$mapfile" ]]; then
-		local perms
-		perms=$(stat -c '%a' "$mapfile")
-		[[ "$perms" == "640" || "$perms" == "600" ]] || \
-			echo "$PROGRAM $COMMAND: aviso — permissões de '$mapfile' mudaram para $perms, restaure para 640" >&2
-		git_add_file "$mapfile" "Edit secrets map for $nome using ${EDITOR:-vi}."
-	fi
-	return "$ret"
+	_secrets_edit_file "$1" .secrets.gpg "secrets map"
 }
 
 # ---------------------------------------------------------------------
 # Inserção manual de uma associação
 # ---------------------------------------------------------------------
+
+# Edita um arquivo cifrado da identidade seguindo o mesmo padrão do
+# cmd_edit nativo do pass: decifra para um arquivo temporário em
+# $SECURE_TMPDIR (via tmpdir(), que usa /dev/shm quando disponível e
+# faz shred+rm por trap na saída quando não), abre com $EDITOR de
+# verdade (não mais vim fixo), recifra, limpa. Diferente da versão
+# anterior (vim direto no .gpg via plugin vim-gnupg), isso não depende
+# de nenhuma ferramenta de terceiros pra nunca deixar texto plano em
+# disco — o ciclo de vida do temporário é inteiramente nosso.
+_secrets_edit_file() {
+	local nome="$1" nomearq="$2" label="$3"
+	local dir
+	dir=$(_secrets_resolve "$nome") || exit 1
+	local mapfile="$dir/$nomearq"
+
+	if [[ -f "$mapfile" ]]; then
+		local perms
+		perms=$(stat -c '%a' "$mapfile")
+		[[ "$perms" == "600" ]] || \
+			die "$PROGRAM $COMMAND: permissões inseguras em '$mapfile' ($perms) — corrija para 600"
+	fi
+
+	tmpdir # define $SECURE_TMPDIR e já registra o trap de limpeza (shred se não for tmpfs)
+	local tmp_file
+	tmp_file="$(mktemp -u "$SECURE_TMPDIR/XXXXXX")-${nomearq#.}.txt"
+
+	local action="Add"
+	if [[ -f "$mapfile" ]]; then
+		$GPG -d -o "$tmp_file" "${GPG_OPTS[@]}" "$mapfile" || \
+			die "$PROGRAM $COMMAND: falha ao descriptografar '$mapfile'"
+		action="Edit"
+	fi
+
+	"${EDITOR:-vi}" "$tmp_file"
+	[[ -f "$tmp_file" ]] || die "$PROGRAM $COMMAND: nada foi salvo"
+
+	if [[ "$action" == "Edit" ]]; then
+		$GPG -d -o - "${GPG_OPTS[@]}" "$mapfile" 2>/dev/null | diff - "$tmp_file" &>/dev/null && \
+			die "$PROGRAM $COMMAND: sem alterações"
+	fi
+
+	local recipients_raw
+	recipients_raw=$(_secrets_recipients "$nome") || exit 1
+	local -a recip=()
+	local linha_recip
+	while IFS= read -r linha_recip; do recip+=("$linha_recip"); done <<< "$recipients_raw"
+	[[ ${#recip[@]} -gt 0 ]] || die "$PROGRAM $COMMAND: nenhum destinatário GPG resolvido para '$nome' — abortando"
+
+	set_git "$mapfile"
+	while ! $GPG -e "${recip[@]}" -o "$mapfile" "${GPG_OPTS[@]}" "$tmp_file"; do
+		yesno "$PROGRAM $COMMAND: falha ao cifrar. Tentar novamente?"
+	done
+	chmod 600 "$mapfile" 2>/dev/null
+	git_add_file "$mapfile" "$action $label for $nome using ${EDITOR:-vi}."
+}
 
 cmd_secrets_add() {
 	local nome="$1" caminho="$2"
@@ -424,27 +496,7 @@ cmd_secrets_mask_list() {
 }
 
 cmd_secrets_mask_edit() {
-	local nome="$1"
-	local mapfile
-	mapfile=$(_secrets_mapfile "$nome" .mask.gpg) || exit 1
-	command -v vim >/dev/null || die "$PROGRAM $COMMAND: vim não encontrado"
-
-	if [[ ! -f "$mapfile" ]]; then
-		echo "$PROGRAM $COMMAND: '$mapfile' ainda não existe — vim-gnupg vai pedir o destinatário GPG ao salvar" >&2
-	fi
-
-	set_git "$mapfile"
-	vim -- "$mapfile"
-	local ret=$?
-
-	if [[ -f "$mapfile" ]]; then
-		local perms
-		perms=$(stat -c '%a' "$mapfile")
-		[[ "$perms" == "640" || "$perms" == "600" ]] || \
-			echo "$PROGRAM $COMMAND: aviso — permissões de '$mapfile' mudaram para $perms, restaure para 640" >&2
-		git_add_file "$mapfile" "Edit mask map for $nome using ${EDITOR:-vi}."
-	fi
-	return "$ret"
+	_secrets_edit_file "$1" .mask.gpg "mask map"
 }
 
 cmd_secrets_mask() {
@@ -688,19 +740,30 @@ cmd_secrets_rebuild() {
 # ---------------------------------------------------------------------
 
 # Gera uma palavra-código pronunciável (consoante/vogal alternado),
-# nada de ruído tipo "asdcf". Reaproveita o estilo do script original.
+# nada de ruído tipo "asdcf". Usa /dev/urandom em vez de $RANDOM: o
+# $RANDOM do bash é PRNG previsível, não criptográfico. O impacto real
+# aqui é baixo (codinome já é metadado público no disco via ls/tree),
+# mas o custo de usar uma fonte melhor é zero, então não há razão pra
+# manter a mais fraca.
+_secrets_urandom_index() {
+	# Imprime um inteiro não-negativo lendo 2 bytes de /dev/urandom.
+	od -An -N2 -tu2 < /dev/urandom | tr -d ' '
+}
+
 _secrets_generate_word() {
 	local len="${1:-5}"
 	local consonants="bcdfglmnprstvz"
 	local vowels="aeiou"
-	local word="" start i
+	local word="" start i r
 
-	(( RANDOM % 2 == 0 )) && start=0 || start=1
+	r=$(_secrets_urandom_index)
+	(( r % 2 == 0 )) && start=0 || start=1
 	for (( i=0; i<len; i++ )); do
+		r=$(_secrets_urandom_index)
 		if (( (i + start) % 2 == 0 )); then
-			word+="${consonants:RANDOM % ${#consonants}:1}"
+			word+="${consonants:r % ${#consonants}:1}"
 		else
-			word+="${vowels:RANDOM % ${#vowels}:1}"
+			word+="${vowels:r % ${#vowels}:1}"
 		fi
 	done
 	printf '%s\n' "${word^}"
@@ -747,6 +810,11 @@ cmd_secrets_namegen() {
 	local dir
 	dir=$(_secrets_resolve "$nome") || exit 1
 
+	# Recusa bloco que atravesse fronteira de outra identidade — não
+	# cifra nada aqui, mas mantido por consistência com 'generate' e
+	# para não sugerir um nome que o 'generate' subsequente recusaria.
+	_secrets_check_no_nested_crossing "$dir" "$bloco"
+
 	local i
 	for (( i=0; i<qtd; i++ )); do
 		_secrets_free_codename "$dir" "$bloco" "$len"
@@ -776,6 +844,14 @@ cmd_secrets_generate() {
 
 	local dir
 	dir=$(_secrets_resolve "$nome") || exit 1
+
+	# Recusa bloco que atravesse fronteira de outra identidade ANTES de
+	# gerar/cifrar qualquer coisa. Ver comentário de
+	# _secrets_check_no_nested_crossing para o porquê: cmd_generate
+	# nativo sobe a árvore pra resolver destinatário, então sem essa
+	# checagem um bloco tipo "OutraIdentidade/algo" cifraria com a
+	# chave da identidade aninhada em vez da pedida na CLI.
+	_secrets_check_no_nested_crossing "$dir" "$bloco"
 
 	local caminho_relativo
 	caminho_relativo=$(_secrets_free_codename "$dir" "$bloco" 5)
