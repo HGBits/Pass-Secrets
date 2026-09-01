@@ -1,8 +1,8 @@
 # pass-secrets
 
-Uma extensão para o [password-store (pass)](https://www.passwordstore.org/) que obscurece a árvore de diretórios e nomes de serviços mantendo a estrutura original do `pass`. 
+Uma extensão para o [password-store (pass)](https://www.passwordstore.org/) que obscurece a árvore de diretórios e nomes de serviços mantendo a estrutura original do `pass`.
 
-Diferente do `pass-tomb` (que necessita de volumes criptografados via Loopback e privilégios de superusuário), o **pass-secrets** utiliza mapeamentos criptografados (`.secrets.gpg` e `.mask.gpg`) baseados na chave GPG de cada diretório.
+Diferente do `pass-tomb` (que necessita de volumes criptografados via Loopback e privilégios de superusuário), o **pass-secrets** utiliza mapeamentos criptografados (`.secrets.gpg` e `.mask.gpg`) baseados na chave GPG de cada diretório. Os serviços e pastas usam codinomes aleatórios, e a associação real é guardada no mapa por identidade.
 
 ---
 
@@ -12,11 +12,10 @@ No `pass` tradicional, os nomes de pastas e arquivos são visíveis no sistema d
 
 ### 🛡️ Identidades e Isolamento de Confiança
 
-Uma **identidade** é qualquer diretório na árvore do `pass` que possua seu próprio arquivo `.gpg-id`, independente da profundidade.
+Uma **identidade** é qualquer diretório na árvore do `pass` que possua seu próprio arquivo `.gpg-id`, independente da profundidade. Nomes de identidade devem ser únicos em toda a árvore. Dois diretórios com `.gpg-id` e o mesmo nome tornam o comando ambíguo e são recusados.
 
 * **Fronteira de Confiança:** Uma identidade aninhada dentro de outra **NÃO herda** as chaves da identidade pai.
-* **Isolamento Total:** Se a chave da identidade pai for comprometida, o conteúdo da identidade filha permanece seguro.
-* **Unicidade de Nome:** O nome da pasta da identidade deve ser único em toda a árvore do `pass`.
+* **Isolamento Total:** Comprometer a chave da identidade pai não expõe o conteúdo da filha.
 
 ---
 
@@ -35,12 +34,13 @@ chmod +x "${PASSWORD_STORE_EXTENSIONS_DIR:-$HOME/.password-store/.extensions}/se
 # 4. Habilite extensões no seu shell (.bashrc, .zshrc, etc.)
 export PASSWORD_STORE_ENABLE_EXTENSIONS=true
 ```
+*(Instalação conforme detalhada no repositório original.)*
 
 ---
 
 ## 🚀 Uso e Comandos
 
-Todos os comandos seguem a sintaxe: `pass secrets <identidade> <subcomando> [argumentos]`
+Todos os comandos seguem a sintaxe: `pass secrets <identidade> <subcomando> [argumentos]`.
 
 ### 🔍 Consultas no Mapa (`.secrets.gpg`)
 
@@ -49,56 +49,66 @@ Todos os comandos seguem a sintaxe: `pass secrets <identidade> <subcomando> [arg
 | `pass secrets <id> dir <bloco>` | Lista entradas cujo caminho começa com o bloco informado. |
 | `pass secrets <id> word <termo> [contexto]` | Busca um termo no mapa visualizando linhas de contexto (`grep -C`). |
 | `pass secrets <id> count <bloco>` | Retorna a contagem de entradas sob o bloco especificado. |
-| `pass secrets <id> struct` | Exibe a estrutura real dos codinomes em disco (sem descriptografar). |
+| `pass secrets <id> struct` | Exibe a estrutura real de codinomes em disco via scan (sem decifrar). |
 
 ### ✏️ Gerenciamento e Reconciliação
 
 | Comando | Descrição |
 | :--- | :--- |
-| `pass secrets <id> add <caminho> <nome-real>` | Associa manualmente um codinome a um nome real. |
-| `pass secrets <id> edit` | Abre o arquivo `.secrets.gpg` no `vim` (requer `vim-gnupg`). |
-| `pass secrets <id> check` | Audita o mapa em relação ao disco (somente leitura / `--dry-run`). |
-| `pass secrets <id> rebuild [--yes] [--prune]` | Varre o disco, detecta novas entradas e reconcilia o mapa. |
+| `pass secrets <id> add <caminho>` | Associa manualmente um codinome já existente. O nome real é pedido via prompt, nunca por argumento, para evitar exposição no histórico do shell. |
+| `pass secrets <id> edit` | Edita o `.secrets.gpg` decifrando para um arquivo temporário na memória (via `/dev/shm`), abre com o seu `$EDITOR` e recifra. Não depende de ferramentas de terceiros (o suporte restrito via `vim-gnupg` foi removido). |
+| `pass secrets <id> check` | Audita o mapa contra a árvore real de arquivos como somente leitura. |
+| `pass secrets <id> rebuild [--yes] [--prune]` | Varre a árvore real e reconcilia o mapa. |
 
 * **Flags do `rebuild`:**
-  * `--yes`: Não pergunta interativamente o nome real para novas entradas (insere `(pendente)`).
-  * `--prune`: Remove entradas órfãs do mapa (entradas que não existem mais no disco).
+  * `--yes`: Não pergunta o nome real para novas entradas (insere como `(pendente)`).
+  * `--prune`: Remove entradas órfãs do mapa.
 
-### 🎭 Gerenciamento de Aliases e Máscaras (`.mask.gpg`)
-
-O mapa `.mask.gpg` permite associar *aliases* (ex: e-mails descartáveis) a diretórios em uma relação *muitos-para-muitos* (*many-to-many*).
+### 🔐 Geração de Codinomes
 
 | Comando | Descrição |
 | :--- | :--- |
-| `pass secrets <id> mask add <alias> <dir>` | Associa um alias de e-mail a um diretório. |
-| `pass secrets <id> mask dir <dir>` | Lista todos os aliases associados a um diretório. |
-| `pass secrets <id> mask word <termo> [ctx]` | Busca por um termo ou alias dentro do mapa de máscaras. |
-| `pass secrets <id> mask list` | Exibe todo o conteúdo descriptografado do arquivo `.mask.gpg`. |
+| `pass secrets <id> namegen [bloco] [-n tamanho] [-u quantidade]` | Sugere codinomes livres de um tamanho especificado, sem criar arquivos. Checa colisões apenas dentro da mesma identidade. |
+| `pass secrets <id> generate [bloco] [tamanho] [flags]` | Gera um codinome livre e já cria a entrada real via comando nativo `pass generate` (repassando as `[flags]`). Não registra a associação de nome, exigindo o uso de `add` posteriormente. Blocos que atravessam identidades aninhadas são recusados para evitar uso acidental da chave GPG errada. |
+
+### 🎭 Gerenciamento de Aliases e Máscaras (`.mask.gpg`)
+
+O mapa `.mask.gpg` permite associar *aliases* (ex: e-mails descartáveis) a diretórios em uma relação *muitos-para-muitos* (*many-to-many*). 
+
+| Comando | Descrição |
+| :--- | :--- |
+| `pass secrets <id> mask add <dir>` | Associa um alias de e-mail a um diretório. O alias é pedido via prompt interativo em vez de argumento. |
+| `pass secrets <id> mask dir <dir>` | Lista os aliases associados a um diretório. |
+| `pass secrets <id> mask word <termo> [ctx]` | Busca um alias ou diretório no `.mask.gpg`. |
+| `pass secrets <id> mask list` | Lista todo o conteúdo do `.mask.gpg`. |
+| `pass secrets <id> mask edit` | Edita o `.mask.gpg` utilizando o mesmo mecanismo seguro e sem dependências externas do comando `edit` principal. |
 
 ---
 
 ## 📂 Formato dos Arquivos Internos
 
-Os arquivos `.secrets.gpg` e `.mask.gpg` são mantidos criptografados em disco usando a chave GPG definida no `.gpg-id` local.
+Os arquivos `.secrets.gpg` e `.mask.gpg` são mantidos criptografados em disco usando a chave GPG definida no `.gpg-id` local. O formato em texto plano, antes da cifra, segue:
 
 * **Formato de `.secrets.gpg`** (associação 1:1 por caminho):
   ```text
-  a1/b2 = Servidor Produção - SSH
-  a1/c3 = E-mail Corporativo
+  <caminho-do-codinome-relativo-a-identidade> = <nome real / descrição>
   ```
+  *(Exemplo: `a1/b2 = Servidor Produção - SSH`)*
 
 * **Formato de `.mask.gpg`** (associação N:N por alias/diretório):
   ```text
-  alias1@domain.com = servicos/financeiro
-  alias2@domain.com = servicos/financeiro
+  <alias> = <caminho-dir>
   ```
+  *(Exemplo: `alias1@domain.com = servicos/financeiro`)*
 
 ---
 
 ## 🔒 Permissões e Segurança
 
-* O script força e valida permissões estritas `640` ou `600` em todos os arquivos de mapeamento criptografados.
-* Integração nativa com o Git do `pass`: todas as modificações via script geram commits automáticos no repositório.
+* O script audita o sistema de arquivos e exige permissões estritas `600` nos arquivos de mapa criptografados (não aceita `640`).
+* O ciclo de vida dos arquivos temporários nas edições (`edit` e `mask edit`) é inteiramente gerenciado pela extensão, limpando o rastro com segurança (via `shred`/`rm` atrelado a um `trap` do shell) sem depender de plugins como o `vim-gnupg`.
+* O script recusa caminhos e blocos de geração de senhas que atravessam diretórios de identidades aninhadas, garantindo rigorosamente que arquivos nunca sejam cifrados pela chave de uma identidade indesejada.
+* Integração nativa com o Git do `pass`: todas as modificações nos mapas via script geram commits automáticos no repositório.
 * Todas as entradas do usuário passam por checagens de validação de *path traversal* (`check_sneaky_paths`) e sanitização de tokens.
 
 ---

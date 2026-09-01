@@ -41,7 +41,7 @@
 # Formato do mapa (.secrets.gpg, texto plano antes de cifrar):
 #   <caminho-do-codinome-relativo-a-identidade> = <nome real / descrição>
 
-readonly VERSION_SECRETS="2.3.0"
+readonly VERSION_SECRETS="2.5.0"
 
 cmd_secrets_version() {
 	echo "$VERSION_SECRETS"
@@ -379,8 +379,20 @@ _secrets_edit_file() {
 	[[ ${#recip[@]} -gt 0 ]] || die "$PROGRAM $COMMAND: nenhum destinatário GPG resolvido para '$nome' — abortando"
 
 	set_git "$mapfile"
+	# Sem checar interatividade, isto era um risco de LOOP INFINITO real
+	# (confirmado com prova prática, timeout matando o processo): yesno()
+	# tem `[[ -t 0 ]] || return 0` — sem terminal, ela sempre retorna
+	# sucesso instantâneo sem consumir nada, então "tentar de novo" nunca
+	# resolve uma falha estrutural (ex.: .gpg-id apontando pra chave
+	# inexistente) e o while reentra pra sempre. Em terminal de verdade,
+	# o comportamento interativo (perguntar, permitir "n" para abortar)
+	# continua idêntico a antes.
 	while ! $GPG -e "${recip[@]}" -o "$mapfile" "${GPG_OPTS[@]}" "$tmp_file"; do
-		yesno "$PROGRAM $COMMAND: falha ao cifrar. Tentar novamente?"
+		if [[ -t 0 ]]; then
+			yesno "$PROGRAM $COMMAND: falha ao cifrar. Tentar novamente?"
+		else
+			die "$PROGRAM $COMMAND: falha ao cifrar e entrada padrão não é interativa — abortando para não entrar em loop infinito. Verifique o .gpg-id de '$nome'."
+		fi
 	done
 	chmod 600 "$mapfile" 2>/dev/null
 	git_add_file "$mapfile" "$action $label for $nome using ${EDITOR:-vi}."
@@ -407,7 +419,20 @@ cmd_secrets_add() {
 	local caminho_esc
 	caminho_esc=$(_secrets_re_escape "$caminho")
 	if grep -qE "^${caminho_esc}[[:space:]]*=" <<< "$content"; then
-		yesno "$PROGRAM $COMMAND: '$caminho' já tem associação em '$nome'. Sobrescrever?"
+		# Mesmo risco do retry de cifragem do edit: yesno() com
+		# `[[ -t 0 ]] || return 0` bypassa a confirmação silenciosamente
+		# fora de terminal — confirmado na prática que uma única linha de
+		# pipe (destinada à pergunta seguinte, "nome real") acaba
+		# sobrescrevendo a associação existente sem NENHUMA confirmação
+		# ter sido de fato perguntada ou respondida. Diferente do
+		# 'insert' nativo do pass (que tem --force explícito pra isso),
+		# aqui a confirmação era a ÚNICA proteção. Fora de terminal,
+		# recusamos em vez de assumir "sim".
+		if [[ -t 0 ]]; then
+			yesno "$PROGRAM $COMMAND: '$caminho' já tem associação em '$nome'. Sobrescrever?"
+		else
+			die "$PROGRAM $COMMAND: '$caminho' já tem associação em '$nome' e a entrada padrão não é interativa — recusando sobrescrever sem confirmação explícita. Rode de um terminal interativo."
+		fi
 		content=$(grep -vE "^${caminho_esc}[[:space:]]*=" <<< "$content")
 	fi
 
