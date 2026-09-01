@@ -4,7 +4,7 @@ Uma extensão para o [password-store (pass)](https://www.passwordstore.org/) que
 
 Diferente do `pass-tomb` (que necessita de volumes criptografados via Loopback e privilégios de superusuário), o **pass-secrets** utiliza mapeamentos criptografados (`.secrets.gpg` e `.mask.gpg`) baseados na chave GPG de cada diretório. Os serviços e pastas usam codinomes aleatórios, e a associação real é guardada no mapa por identidade.
 
-**Versão atual: 2.5.0**
+**Versão atual: 2.5.1**
 
 ---
 
