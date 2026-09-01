@@ -41,7 +41,7 @@
 # Formato do mapa (.secrets.gpg, texto plano antes de cifrar):
 #   <caminho-do-codinome-relativo-a-identidade> = <nome real / descrição>
 
-readonly VERSION_SECRETS="2.5.0"
+readonly VERSION_SECRETS="2.5.1"
 
 cmd_secrets_version() {
 	echo "$VERSION_SECRETS"
@@ -840,6 +840,18 @@ cmd_secrets_namegen() {
 	done
 	[[ "$len" =~ ^[0-9]+$ && "$len" -gt 0 ]] || die "$PROGRAM $COMMAND: tamanho inválido"
 	[[ "$qtd" =~ ^[0-9]+$ && "$qtd" -gt 0 ]] || die "$PROGRAM $COMMAND: quantidade inválida"
+
+	# Faltava aqui: 'generate' valida o bloco com _secrets_valid_token
+	# antes de usá-lo, mas 'namegen' nunca validava — confirmado na
+	# prática que 'namegen ../etc' sugeria '../etc/Cafin' sem recusar
+	# nada, e o teste de existência em _secrets_free_codename
+	# (`[[ -e "$dir/$caminho.gpg" ]]`) chegava a checar existência de
+	# arquivo FORA do diretório da identidade por causa da resolução
+	# normal de '..' do filesystem. namegen não escreve nada sozinho,
+	# mas isso ainda é uma violação real da fronteira da identidade e
+	# quebra a consistência com 'generate' que o comentário abaixo já
+	# dizia ser a intenção.
+	[[ -n "$bloco" && "$bloco" != "." ]] && { _secrets_valid_token "$bloco" || die "$PROGRAM $COMMAND: bloco inválido"; }
 
 	local dir
 	dir=$(_secrets_resolve "$nome") || exit 1
