@@ -1,4 +1,5 @@
 # pass-secrets
+[ENGLISH VERSION](https://github.com/HGBits/Pass-Secrets/blob/184cfcfbdbc8913330866cc13b272114225397f2/README-EN.md)
 
 Uma extensão para o [password-store (pass)](https://www.passwordstore.org/) que obscurece a árvore de diretórios e nomes de serviços mantendo a estrutura original do `pass`.
 
