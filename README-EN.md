@@ -1,28 +1,29 @@
-pass-secrets
+# pass-secrets
 
 An extension for password-store (pass)
- that obscures the directory tree and service names while preserving the original pass structure.
+ that obscures the directory tree and service names while preserving the original `pass` structure.
 
-Unlike pass-tomb (which requires encrypted volumes via Loopback and superuser privileges), pass-secrets uses encrypted mappings (.secrets.gpg and .mask.gpg) based on the GPG key of each directory. Services and folders use random aliases, while the real association is stored in the identity-based mapping.
+Unlike `pass-tomb` (which requires encrypted volumes via Loopback and superuser privileges), **pass-secrets** uses encrypted mappings (`.secrets.gpg` and `.mask.gpg`) based on the GPG key of each directory. Services and folders use random aliases, while the real association is stored in the identity-based mapping.
 
-Current version: 2.5.1
+**Current version: 2.5.1**
 
-💡 How Does It Work?
+## How Does It Work?
 
-In traditional pass, folder and file names are visible on the filesystem. pass-secrets allows you to rename actual subdirectories and entries to random aliases (e.g. Zovar/Kelip.gpg) while maintaining an encrypted mapping that associates each alias with the real service.
+In traditional `pass`, folder and file names are visible on the filesystem. **pass-secrets** allows you to rename actual subdirectories and entries to random aliases (e.g. `Zovar/Kelip.gpg`) while maintaining an encrypted mapping that associates each alias with the real service.
 
-🛡️ Identities and Trust Isolation
+### Identities and Trust Isolation
 
-An identity is any directory in the pass tree that has its own .gpg-id file, regardless of its depth. Identity names must be unique throughout the entire tree. Two directories with .gpg-id files and the same name make the command ambiguous and are therefore rejected.
+An `identity` is any directory in the `pass` tree that has its own `.gpg-id` file, regardless of its depth. Identity names must be unique throughout the entire tree. Two directories with `.gpg-id` files and the same name make the command ambiguous and are therefore rejected.
 
-Trust Boundary: An identity nested inside another does NOT inherit the keys of its parent identity.
-Complete Isolation: Compromising the parent identity's key does not expose the contents of the child identity.
-Boundary-Crossing Protection: generate and namegen reject any block/path that crosses the directory of another nested identity — without this check, a password could be encrypted using the wrong identity's key.
-🔑 Optional .gpg-id Signature
+**Trust Boundary:** An identity nested inside another does NOT inherit the keys of its parent identity.
+**Complete Isolation:** Compromising the parent identity's key does not expose the contents of the child identity.
+**Boundary-Crossing Protection:** `generate` and `namegen` reject any block/path that crosses the directory of another nested identity — without this check, a password could be encrypted using the wrong identity's key.
 
-If PASSWORD_STORE_SIGNING_KEY is configured (the same variable used by native pass), pass-secrets requires a valid .gpg-id.sig before accepting an identity's recipients — preventing replacement or injection of keys into .gpg-id. If the variable is not configured, behavior is identical to plain pass (without verification).
+### Optional .gpg-id Signature
 
-🛠️ Installation
+If `PASSWORD_STORE_SIGNING_KEY` is configured (the same variable used by native `pass`), pass-secrets requires a valid `.gpg-id.sig` before accepting an identity's recipients — preventing replacement or injection of keys into `.gpg-id`. If the variable is not configured, behavior is identical to plain pass (without verification).
+
+### Installation
 # 1. Create the pass extensions directory (if it does not already exist)
 mkdir -p "${PASSWORD_STORE_EXTENSIONS_DIR:-$HOME/.password-store/.extensions}"
 
@@ -35,11 +36,12 @@ chmod +x "${PASSWORD_STORE_EXTENSIONS_DIR:-$HOME/.password-store/.extensions}/se
 # 4. Enable extensions in your shell (.bashrc, .zshrc, etc.)
 export PASSWORD_STORE_ENABLE_EXTENSIONS=true
 
-🚀 Usage and Commands
+## Usage and Commands
 
 All commands follow the syntax: pass secrets <identity> <subcommand> [arguments].
 
-🔍 Map Queries (.secrets.gpg)
+### Map Queries (.secrets.gpg)
+
 Command	Description
 pass secrets <id> dir <block>	Lists entries whose path starts with the specified block.
 pass secrets <id> word <term> [context]	Searches for a term in the map while displaying context lines (grep -C).
@@ -55,11 +57,12 @@ pass secrets <id> rebuild [--yes] [--prune]	Scans the actual tree and reconciles
 rebuild flags:
 --yes: Does not prompt for the real name of new entries (inserts them as (pending)).
 --prune: Removes orphaned entries from the map.
-🔐 Alias Generation
+
+### Alias Generation
 Command	Description
 pass secrets <id> namegen [block] [-n length] [-u count]	Suggests available aliases of the specified length without creating files. Checks for collisions only within the same identity. Blocks that cross nested identities are rejected, using the same protection as generate below.
 pass secrets <id> generate [block] [length] [flags]	Generates an available alias and immediately creates the actual entry using the native pass generate command (forwarding the [flags]). It does not record the name association, requiring add to be used afterward. Blocks that cross nested identities are rejected to prevent encryption with the wrong GPG key.
-🎭 Alias and Mask Management (.mask.gpg)
+### Alias and Mask Management (.mask.gpg)
 
 The .mask.gpg map allows aliases (e.g. disposable email addresses) to be associated with directories in a many-to-many relationship.
 
@@ -79,7 +82,7 @@ pass secrets <id> edit / mask edit: if encryption fails (e.g. .gpg-id is corrupt
 
 In all three cases, normal interactive behavior (prompting and waiting for a response in a real terminal) remains unchanged.
 
-📂 Internal File Format
+## Internal File Format
 
 The .secrets.gpg and .mask.gpg files are kept encrypted on disk using the GPG key defined in the local .gpg-id. The plaintext format, before encryption, is:
 
@@ -97,13 +100,13 @@ The .secrets.gpg and .mask.gpg files are kept encrypted on disk using the GPG ke
 
 (Example: alias1@domain.com = services/finance)
 
-🔒 Permissions and Security
+## Permissions and Security
 The script audits the filesystem and requires exactly 600 permissions on encrypted map files (it does not accept 640 or any other mode).
 The lifecycle of temporary files used during editing (edit and mask edit) is entirely managed by the extension, securely cleaning up traces (via shred/rm tied to a shell trap) without depending on plugins such as vim-gnupg.
 The script rejects password-generation paths and blocks that cross directories belonging to nested identities, ensuring that files are never encrypted using an unintended identity's key.
 Native integration with pass's Git support: all map modifications made by the script automatically create commits in the repository.
 All user input goes through path-traversal checks (check_sneaky_paths) and token sanitization.
-📄 License
+## License
 
 This project is released under the same license as the password-store
  project (GPLv2+).
