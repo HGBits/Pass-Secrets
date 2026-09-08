@@ -15,6 +15,28 @@
 # independente de profundidade. Dois diretórios com .gpg-id e o mesmo
 # nome tornam o comando ambíguo e são recusados.
 #
+# IDIOMA: todas as mensagens (erros, avisos, prompts, --help) suportam
+# múltiplos idiomas. O bloco entre os marcadores "AUTO-GENERATED I18N
+# CATALOG" abaixo é gerado por tools/gen-i18n.py a partir dos arquivos
+# fonte em i18n/*.json (um JSON por idioma) — NÃO edite esse bloco à
+# mão, edite o .json e rode o gerador de novo. Isso é o que permite
+# publicar as fontes de tradução num serviço como o Weblate e depois
+# só rodar o gerador pra atualizar este arquivo único.
+#
+# O idioma é detectado automaticamente a partir de LC_ALL/LC_MESSAGES/
+# LANG (os dois primeiros caracteres da locale, ex. "en_US.UTF-8" vira
+# "en"); se não houver um catálogo pra esse código, cai pra português
+# (idioma nativo/completo desta extensão). Para forçar um idioma
+# independente da locale do sistema, defina PASS_SECRETS_LANG=<código>
+# (ex. PASS_SECRETS_LANG=es) antes de chamar o comando. Se uma chave
+# específica não existir no idioma detectado (tradução incompleta),
+# cai pra inglês e depois pra português, nessa ordem — nunca aparece
+# uma mensagem em branco por causa de tradução faltando.
+#
+# Mensagens de commit do git permanecem sempre em inglês, independente
+# do idioma da interface, por convenção de histórico do git — não
+# fazem parte do catálogo i18n.
+#
 # Instalação (extensão real do pass, não script sourced no .bashrc):
 #   1. mkdir -p "$PASSWORD_STORE_EXTENSIONS_DIR" (padrão: ~/.password-store/.extensions)
 #   2. cp secrets.bash "$PASSWORD_STORE_EXTENSIONS_DIR/secrets.bash"
@@ -41,39 +63,360 @@
 # Formato do mapa (.secrets.gpg, texto plano antes de cifrar):
 #   <caminho-do-codinome-relativo-a-identidade> = <nome real / descrição>
 
-readonly VERSION_SECRETS="2.5.1"
+readonly VERSION_SECRETS="2.6.0"
 
-cmd_secrets_version() {
-	echo "$VERSION_SECRETS"
+# ---------------------------------------------------------------------
+# i18n — catálogo de mensagens
+# ---------------------------------------------------------------------
+
+# >>> AUTO-GENERATED I18N CATALOG - DO NOT EDIT BY HAND <<<
+
+# Gerado por tools/gen-i18n.py a partir de i18n/*.json — para
+# adicionar ou corrigir uma tradução, edite o .json correspondente
+# e rode o gerador de novo. Não edite este bloco à mão, a próxima
+# regeneração vai sobrescrever.
+
+readonly _SECRETS_LANGS_AVAILABLE=(en es pt)
+
+declare -A _SECRETS_MSG_EN=(
+	[err_alias_empty]="%s: alias is empty, nothing was saved"
+	[err_context_must_be_int]="%s: context must be an integer"
+	[err_decrypt_failed]="%s: failed to decrypt '%s'"
+	[err_encrypt_failed]="%s: failed to encrypt the map for '%s'"
+	[err_encrypt_noninteractive]="%s: encryption failed and standard input is not interactive — aborting to avoid an infinite loop. Check the .gpg-id for '%s'."
+	[err_gpgid_empty]="%s: '%s' is empty"
+	[err_identity_ambiguous_header]="%s: identity '%s' is ambiguous, found at multiple paths:"
+	[err_identity_ambiguous_hint]="%s: rename one of the directories to disambiguate (identity names must be unique across the whole tree)"
+	[err_identity_empty]="%s: identity name is empty"
+	[err_identity_invalid]="%s: invalid identity name"
+	[err_identity_not_found]="%s: identity '%s' not found (no directory with that name contains a .gpg-id)"
+	[err_insecure_perms]="%s: insecure permissions on '%s' (%s) — fix it to 600"
+	[err_invalid_block]="%s: invalid block"
+	[err_invalid_count]="%s: invalid count"
+	[err_invalid_dir_path]="%s: invalid directory path"
+	[err_invalid_length]="%s: invalid length"
+	[err_invalid_path]="%s: invalid path"
+	[err_nested_crossing]="%s: block '%s' crosses into the nested identity '%s' — refused (this would encrypt/look up with the wrong key)"
+	[err_no_alias_for_dir]="%s: no alias associated with '%s' in the map for '%s'"
+	[err_no_changes]="%s: no changes"
+	[err_no_entries_under_block]="%s: no entries under '%s' in the map for '%s'"
+	[err_no_free_codename]="%s: could not generate a free codename after %s attempts"
+	[err_no_mapfile_yet]="%s: '%s' doesn't have a '%s' yet — create an entry first"
+	[err_no_occurrence]="%s: no occurrence of '%s'"
+	[err_no_recipients_abort]="%s: no GPG recipient resolved for '%s' — aborting"
+	[err_no_recipients_abort_default]="%s: no GPG recipient resolved for '%s' — aborting to avoid encrypting with the system's default key"
+	[err_nothing_saved]="%s: nothing was saved"
+	[err_overwrite_noninteractive]="%s: '%s' already has an association in '%s' and standard input is not interactive — refusing to overwrite without explicit confirmation. Run this from an interactive terminal."
+	[err_real_name_empty]="%s: real name is empty, nothing was saved"
+	[err_rebuild_eof]="%s: standard input ended (EOF) before asking for the real name of '%s' — nothing was saved. Run with --yes or answer from an interactive terminal."
+	[err_search_error]="%s: error during search (grep returned %s)"
+	[err_struct_no_entries]="%s: '%s' doesn't have any entries yet"
+	[err_unknown_mask_subcmd]="%s: unknown mask subcommand '%s' (use: add|dir|word|edit|list)"
+	[err_unknown_option]="%s: unknown option '%s'"
+	[err_unknown_subcmd]="%s: unknown command '%s' (use: dir|word|count|edit|check|struct|add|rebuild|mask|namegen|generate)"
+	[info_codename_generated]="%s: codename generated — '%s' (in '%s')"
+	[info_dry_run]="%s: --dry-run, nothing was saved"
+	[info_orphans_kept]="%s: kept — run with --prune to remove"
+	[info_orphans_pruned]="%s: orphans removed (--prune)"
+	[info_rebuild_summary]="%s: '%s' — %s new, %s orphaned"
+	[info_register_hint]="%s: to register the association: %s %s add '%s' '<real name>'"
+	[prompt_alias]="Email alias to associate with '%s': "
+	[prompt_encrypt_retry]="%s: encryption failed. Try again?"
+	[prompt_overwrite]="%s: '%s' already has an association in '%s'. Overwrite?"
+	[prompt_real_name]="Real name for '%s': "
+	[prompt_real_name_rebuild]="Real name for '%s'? "
+	[usage_add]="Usage: {PROG} <identity> add <relative-path>"
+	[usage_dir]="Usage: {PROG} <identity> dir <block>"
+	[usage_mask_add]="Usage: {PROG} <identity> mask add <dir-path>"
+	[usage_mask_dir]="Usage: {PROG} <identity> mask dir <dir-path>"
+	[usage_mask_word]="Usage: {PROG} <identity> mask word <term> [context]"
+	[usage_word]="Usage: {PROG} <identity> word <term> [context]"
+	[warn_dir_missing]="%s: warning — '%s' isn't an existing directory in '%s' yet"
+	[warn_dup_real_names_header]="%s: duplicate real names (same real name across different codenames):"
+	[warn_identity_name_dup]="%s: warning — identity name '%s' is duplicated in the tree:"
+	[warn_mask_decrypt_failed]="%s: warning — failed to decrypt .mask.gpg for orphan check"
+	[warn_mask_orphans_header]="%s: mask — entries pointing to a directory that no longer exists:"
+	[warn_orphans_header]="%s: orphaned entries (in the map, no longer on disk):"
+	[warn_path_missing_orphan]="%s: warning — '%s' doesn't exist in '%s' yet; the association will be orphaned until the real entry is created"
+)
+
+declare -A _SECRETS_MSG_ES=(
+	[err_alias_empty]="%s: alias vacio, nada fue guardado"
+	[err_context_must_be_int]="%s: el contexto debe ser un entero"
+	[err_decrypt_failed]="%s: fallo al descifrar '%s'"
+	[err_encrypt_failed]="%s: fallo al cifrar el mapa de '%s'"
+	[err_encrypt_noninteractive]="%s: fallo al cifrar y la entrada estandar no es interactiva — abortando para evitar un bucle infinito. Revise el .gpg-id de '%s'."
+	[err_gpgid_empty]="%s: '%s' esta vacio"
+	[err_identity_ambiguous_header]="%s: identidad '%s' es ambigua, encontrada en multiples rutas:"
+	[err_identity_ambiguous_hint]="%s: renombre uno de los directorios para desambiguar (los nombres de identidad deben ser unicos en todo el arbol)"
+	[err_identity_empty]="%s: nombre de identidad vacio"
+	[err_identity_invalid]="%s: nombre de identidad invalido"
+	[err_identity_not_found]="%s: identidad '%s' no encontrada (ningun directorio con ese nombre contiene .gpg-id)"
+	[err_insecure_perms]="%s: permisos inseguros en '%s' (%s) — corrija a 600"
+	[err_invalid_block]="%s: bloque invalido"
+	[err_invalid_count]="%s: cantidad invalida"
+	[err_invalid_dir_path]="%s: ruta de directorio invalida"
+	[err_invalid_length]="%s: longitud invalida"
+	[err_invalid_path]="%s: ruta invalida"
+	[err_nested_crossing]="%s: el bloque '%s' atraviesa la identidad anidada '%s' — rechazado (esto cifraria/buscaria con la clave equivocada)"
+	[err_no_alias_for_dir]="%s: ningun alias asociado a '%s' en el mapa de '%s'"
+	[err_no_changes]="%s: sin cambios"
+	[err_no_entries_under_block]="%s: ninguna entrada bajo '%s' en el mapa de '%s'"
+	[err_no_free_codename]="%s: no fue posible generar un codinome libre tras %s intentos"
+	[err_no_mapfile_yet]="%s: '%s' todavia no tiene '%s' — cree una entrada primero"
+	[err_no_occurrence]="%s: ninguna ocurrencia de '%s'"
+	[err_no_recipients_abort]="%s: ningun destinatario GPG resuelto para '%s' — abortando"
+	[err_no_recipients_abort_default]="%s: ningun destinatario GPG resuelto para '%s' — abortando para no cifrar con la clave predeterminada del sistema"
+	[err_nothing_saved]="%s: nada fue guardado"
+	[err_overwrite_noninteractive]="%s: '%s' ya tiene una asociacion en '%s' y la entrada estandar no es interactiva — rechazando sobrescribir sin confirmacion explicita. Ejecute esto desde una terminal interactiva."
+	[err_real_name_empty]="%s: nombre real vacio, nada fue guardado"
+	[err_rebuild_eof]="%s: la entrada estandar termino (EOF) antes de preguntar el nombre real de '%s' — nada fue guardado. Ejecute con --yes o responda desde una terminal interactiva."
+	[err_search_error]="%s: error durante la busqueda (grep devolvio %s)"
+	[err_struct_no_entries]="%s: '%s' todavia no tiene entradas"
+	[err_unknown_mask_subcmd]="%s: subcomando de mask desconocido '%s' (use: add|dir|word|edit|list)"
+	[err_unknown_option]="%s: opcion desconocida '%s'"
+	[err_unknown_subcmd]="%s: comando desconocido '%s' (use: dir|word|count|edit|check|struct|add|rebuild|mask|namegen|generate)"
+	[info_codename_generated]="%s: codinome generado — '%s' (en '%s')"
+	[info_dry_run]="%s: --dry-run, nada fue guardado"
+	[info_orphans_kept]="%s: mantenidas — ejecute con --prune para eliminar"
+	[info_orphans_pruned]="%s: huerfanas eliminadas (--prune)"
+	[info_rebuild_summary]="%s: '%s' — %s nuevas, %s huerfanas"
+	[info_register_hint]="%s: para registrar la asociacion: %s %s add '%s' '<nombre real>'"
+	[prompt_alias]="Alias de correo para asociar con '%s': "
+	[prompt_encrypt_retry]="%s: fallo al cifrar. ¿Intentar de nuevo?"
+	[prompt_overwrite]="%s: '%s' ya tiene una asociacion en '%s'. ¿Sobrescribir?"
+	[prompt_real_name]="Nombre real para '%s': "
+	[prompt_real_name_rebuild]="¿Nombre real para '%s'? "
+	[usage_add]="Uso: {PROG} <identidad> add <ruta-relativa>"
+	[usage_dir]="Uso: {PROG} <identidad> dir <bloque>"
+	[usage_mask_add]="Uso: {PROG} <identidad> mask add <ruta-dir>"
+	[usage_mask_dir]="Uso: {PROG} <identidad> mask dir <ruta-dir>"
+	[usage_mask_word]="Uso: {PROG} <identidad> mask word <termino> [contexto]"
+	[usage_word]="Uso: {PROG} <identidad> word <termino> [contexto]"
+	[warn_dir_missing]="%s: aviso — '%s' todavia no es un directorio existente en '%s'"
+	[warn_dup_real_names_header]="%s: nombres reales duplicados (mismo nombre real en distintos codinomes):"
+	[warn_identity_name_dup]="%s: aviso — el nombre de identidad '%s' esta duplicado en el arbol:"
+	[warn_mask_decrypt_failed]="%s: aviso — fallo al descifrar .mask.gpg para revisar huerfanos"
+	[warn_mask_orphans_header]="%s: mask — entradas que apuntan a un directorio que ya no existe:"
+	[warn_orphans_header]="%s: entradas huerfanas (en el mapa, ya no existen en el disco):"
+	[warn_path_missing_orphan]="%s: aviso — '%s' todavia no existe en '%s'; la asociacion quedara huerfana hasta que se cree la entrada real"
+)
+
+declare -A _SECRETS_MSG_PT=(
+	[err_alias_empty]="%s: alias vazio, nada foi salvo"
+	[err_context_must_be_int]="%s: contexto deve ser inteiro"
+	[err_decrypt_failed]="%s: falha ao descriptografar '%s'"
+	[err_encrypt_failed]="%s: falha ao cifrar o mapa de '%s'"
+	[err_encrypt_noninteractive]="%s: falha ao cifrar e entrada padrão não é interativa — abortando para não entrar em loop infinito. Verifique o .gpg-id de '%s'."
+	[err_gpgid_empty]="%s: '%s' está vazio"
+	[err_identity_ambiguous_header]="%s: identidade '%s' é ambígua, encontrada em múltiplos caminhos:"
+	[err_identity_ambiguous_hint]="%s: renomeie um dos diretórios para desambiguar (nomes de identidade devem ser únicos em toda a árvore)"
+	[err_identity_empty]="%s: nome de identidade vazio"
+	[err_identity_invalid]="%s: nome de identidade inválido"
+	[err_identity_not_found]="%s: identidade '%s' não encontrada (nenhum diretório com esse nome contém .gpg-id)"
+	[err_insecure_perms]="%s: permissões inseguras em '%s' (%s) — corrija para 600"
+	[err_invalid_block]="%s: bloco inválido"
+	[err_invalid_count]="%s: quantidade inválida"
+	[err_invalid_dir_path]="%s: caminho de diretório inválido"
+	[err_invalid_length]="%s: tamanho inválido"
+	[err_invalid_path]="%s: caminho inválido"
+	[err_nested_crossing]="%s: bloco '%s' atravessa a identidade aninhada '%s' — recusado (isso cifraria/procuraria com a chave errada)"
+	[err_no_alias_for_dir]="%s: nenhum alias associado a '%s' no mapa de '%s'"
+	[err_no_changes]="%s: sem alterações"
+	[err_no_entries_under_block]="%s: nenhuma entrada sob '%s' no mapa de '%s'"
+	[err_no_free_codename]="%s: não foi possível gerar um codinome livre após %s tentativas"
+	[err_no_mapfile_yet]="%s: '%s' ainda não tem '%s' — crie uma entrada primeiro"
+	[err_no_occurrence]="%s: nenhuma ocorrência de '%s'"
+	[err_no_recipients_abort]="%s: nenhum destinatário GPG resolvido para '%s' — abortando"
+	[err_no_recipients_abort_default]="%s: nenhum destinatário GPG resolvido para '%s' — abortando para não cifrar com chave padrão do sistema"
+	[err_nothing_saved]="%s: nada foi salvo"
+	[err_overwrite_noninteractive]="%s: '%s' já tem associação em '%s' e a entrada padrão não é interativa — recusando sobrescrever sem confirmação explícita. Rode de um terminal interativo."
+	[err_real_name_empty]="%s: nome real vazio, nada foi salvo"
+	[err_rebuild_eof]="%s: entrada padrão terminou (EOF) antes de perguntar o nome real de '%s' — nada foi salvo. Rode com --yes ou responda a partir de um terminal interativo."
+	[err_search_error]="%s: erro durante a busca (grep retornou %s)"
+	[err_struct_no_entries]="%s: '%s' não tem entradas ainda"
+	[err_unknown_mask_subcmd]="%s: subcomando de mask desconhecido '%s' (use: add|dir|word|edit|list)"
+	[err_unknown_option]="%s: opção desconhecida '%s'"
+	[err_unknown_subcmd]="%s: comando desconhecido '%s' (use: dir|word|count|edit|check|struct|add|rebuild|mask|namegen|generate)"
+	[info_codename_generated]="%s: codinome gerado — '%s' (em '%s')"
+	[info_dry_run]="%s: --dry-run, nada foi salvo"
+	[info_orphans_kept]="%s: mantidas — rode com --prune para remover"
+	[info_orphans_pruned]="%s: órfãs removidas (--prune)"
+	[info_rebuild_summary]="%s: '%s' — %s novas, %s órfãs"
+	[info_register_hint]="%s: para registrar a associação: %s %s add '%s' '<nome real>'"
+	[prompt_alias]="Alias de e-mail para associar a '%s': "
+	[prompt_encrypt_retry]="%s: falha ao cifrar. Tentar novamente?"
+	[prompt_overwrite]="%s: '%s' já tem associação em '%s'. Sobrescrever?"
+	[prompt_real_name]="Nome real para '%s': "
+	[prompt_real_name_rebuild]="Nome real para '%s'? "
+	[usage_add]="Usage: {PROG} <identidade> add <caminho-relativo>"
+	[usage_dir]="Usage: {PROG} <identidade> dir <bloco>"
+	[usage_mask_add]="Usage: {PROG} <identidade> mask add <caminho-dir>"
+	[usage_mask_dir]="Usage: {PROG} <identidade> mask dir <caminho-dir>"
+	[usage_mask_word]="Usage: {PROG} <identidade> mask word <termo> [contexto]"
+	[usage_word]="Usage: {PROG} <identidade> word <termo> [contexto]"
+	[warn_dir_missing]="%s: aviso — '%s' não é um diretório existente em '%s' ainda"
+	[warn_dup_real_names_header]="%s: nomes reais duplicados (mesmo nome real em codinomes diferentes):"
+	[warn_identity_name_dup]="%s: aviso — nome de identidade '%s' está duplicado na árvore:"
+	[warn_mask_decrypt_failed]="%s: aviso — falha ao decifrar .mask.gpg para checagem de órfãos"
+	[warn_mask_orphans_header]="%s: mask — entradas apontando para diretório que não existe mais:"
+	[warn_orphans_header]="%s: entradas órfãs (no mapa, não existem mais no disco):"
+	[warn_path_missing_orphan]="%s: aviso — '%s' não existe em '%s' ainda; associação ficará órfã até a entrada real ser criada"
+)
+
+_secrets_usage_text_en() {
+	cat <<-'_I18N_EOF_EN'
+	{PROG} - alternative to pass-tomb for obscuring the pass tree
+	
+	Usage:
+	    {PROG} <identity> dir     <block>
+	    {PROG} <identity> word    <term> [context]
+	    {PROG} <identity> count   <block>
+	    {PROG} <identity> edit
+	    {PROG} <identity> check
+	    {PROG} <identity> struct
+	    {PROG} <identity> add     <relative-path>
+	    {PROG} <identity> rebuild [--yes] [--prune]
+	    {PROG} <identity> mask add  <dir-path>
+	    {PROG} <identity> mask dir  <dir-path>
+	    {PROG} <identity> mask word <term> [context]
+	    {PROG} <identity> mask edit
+	    {PROG} <identity> mask list
+	    {PROG} <identity> namegen  [block] [-n length] [-u count]
+	    {PROG} <identity> generate [block] [length] [pass generate flags]
+	
+	identity:
+	    any directory in the pass tree that has its own .gpg-id, at
+	    any depth. IDENTITY NAMES MUST BE UNIQUE ACROSS THE WHOLE
+	    TREE — two directories with a .gpg-id and the same name make
+	    the command ambiguous and are refused.
+	
+	commands:
+	    dir     <block>                lists entries whose path starts with <block>
+	    word    <term> [context]       searches for a term in the map (grep -C)
+	    count   <block>                counts entries under <block>
+	    edit                           edits .secrets.gpg (decrypts to /dev/shm,
+	                                    opens with $EDITOR, re-encrypts — no external plugin)
+	    check                          audits the map against the real tree (read-only)
+	    struct                         lists the real codename structure (disk scan, no decryption)
+	    add     <path>                 manually associates an already-existing codename
+	                                    (real name is asked via prompt, never as an
+	                                    argument — avoids ending up in shell history)
+	    rebuild [--yes] [--prune]      scans the real tree and reconciles the map
+	                                       --yes:   doesn't ask real name for new entries
+	                                       --prune: removes orphaned entries from the map
+	    mask add <dir>                  associates an email alias (asked via
+	                                    prompt) with a directory (many-to-many: the
+	                                    same alias can serve several directories, and vice-versa)
+	    mask dir <dir>                 lists aliases associated with a directory
+	    mask word <term> [context]     searches for an alias/directory in .mask.gpg
+	    mask edit                      edits .mask.gpg (same mechanism as edit above)
+	    mask list                      lists the entire content of .mask.gpg
+	    namegen [block] [-n L] [-u Q]  suggests Q free codename(s) of length L,
+	                                    without creating anything (collision checked
+	                                    only within the identity; different identities
+	                                    may repeat). A block that crosses into another
+	                                    nested identity is refused.
+	    generate [block] [length]      generates a free codename AND already creates
+	                                    the real entry via 'pass generate' — doesn't
+	                                    register the association (use 'add' afterward).
+	                                    A block that crosses into another nested identity
+	                                    is refused (avoids encrypting with the wrong key).
+	
+	More information may be found in the pass-secrets(1) man page.
+	_I18N_EOF_EN
 }
 
-cmd_secrets_usage() {
-	cat <<-_EOF
-	$PROGRAM $COMMAND - alternativa ao pass-tomb para obscurecer a árvore do pass
-
+_secrets_usage_text_es() {
+	cat <<-'_I18N_EOF_ES'
+	{PROG} - alternativa a pass-tomb para ocultar el arbol de pass
+	
 	Uso:
-	    $PROGRAM $COMMAND <identidade> dir     <bloco>
-	    $PROGRAM $COMMAND <identidade> word    <termo> [contexto]
-	    $PROGRAM $COMMAND <identidade> count   <bloco>
-	    $PROGRAM $COMMAND <identidade> edit
-	    $PROGRAM $COMMAND <identidade> check
-	    $PROGRAM $COMMAND <identidade> struct
-	    $PROGRAM $COMMAND <identidade> add     <caminho-relativo>
-	    $PROGRAM $COMMAND <identidade> rebuild [--yes] [--prune]
-	    $PROGRAM $COMMAND <identidade> mask add  <caminho-dir>
-	    $PROGRAM $COMMAND <identidade> mask dir  <caminho-dir>
-	    $PROGRAM $COMMAND <identidade> mask word <termo> [contexto]
-	    $PROGRAM $COMMAND <identidade> mask edit
-	    $PROGRAM $COMMAND <identidade> mask list
-	    $PROGRAM $COMMAND <identidade> namegen  [bloco] [-n tamanho] [-u quantidade]
-	    $PROGRAM $COMMAND <identidade> generate [bloco] [tamanho] [flags do pass generate]
+	    {PROG} <identidad> dir     <bloque>
+	    {PROG} <identidad> word    <termino> [contexto]
+	    {PROG} <identidad> count   <bloque>
+	    {PROG} <identidad> edit
+	    {PROG} <identidad> check
+	    {PROG} <identidad> struct
+	    {PROG} <identidad> add     <ruta-relativa>
+	    {PROG} <identidad> rebuild [--yes] [--prune]
+	    {PROG} <identidad> mask add  <ruta-dir>
+	    {PROG} <identidad> mask dir  <ruta-dir>
+	    {PROG} <identidad> mask word <termino> [contexto]
+	    {PROG} <identidad> mask edit
+	    {PROG} <identidad> mask list
+	    {PROG} <identidad> namegen  [bloque] [-n longitud] [-u cantidad]
+	    {PROG} <identidad> generate [bloque] [longitud] [flags de pass generate]
+	
+	identidad:
+	    cualquier directorio del arbol de pass que tenga su propio
+	    .gpg-id, a cualquier profundidad. LOS NOMBRES DE IDENTIDAD DEBEN
+	    SER UNICOS EN TODO EL ARBOL — dos directorios con .gpg-id y el
+	    mismo nombre hacen el comando ambiguo y son rechazados.
+	
+	comandos:
+	    dir     <bloque>                lista entradas cuya ruta empieza con <bloque>
+	    word    <termino> [contexto]    busca un termino en el mapa (grep -C)
+	    count   <bloque>                cuenta entradas bajo <bloque>
+	    edit                            edita .secrets.gpg (descifra a /dev/shm,
+	                                     abre con $EDITOR, recifra — sin plugin externo)
+	    check                           audita el mapa contra el arbol real (solo lectura)
+	    struct                          lista la estructura real de codinomes (escaneo de disco, sin descifrar)
+	    add     <ruta>                  asocia manualmente un codinome ya existente
+	                                     (el nombre real se pide por prompt, nunca
+	                                     como argumento — evita quedar en el historial de la shell)
+	    rebuild [--yes] [--prune]       escanea el arbol real y reconcilia el mapa
+	                                        --yes:   no pregunta el nombre real de entradas nuevas
+	                                        --prune: elimina entradas huerfanas del mapa
+	    mask add <dir>                   asocia un alias de correo (pedido por
+	                                     prompt) a un directorio (many-to-many: el
+	                                     mismo alias puede servir varios directorios, y viceversa)
+	    mask dir <dir>                  lista los alias asociados a un directorio
+	    mask word <termino> [contexto]  busca un alias/directorio en .mask.gpg
+	    mask edit                       edita .mask.gpg (mismo mecanismo del edit de arriba)
+	    mask list                       lista todo el contenido de .mask.gpg
+	    namegen [bloque] [-n L] [-u Q]  sugiere Q codinome(s) libre(s) de longitud L,
+	                                     sin crear nada (colision revisada solo dentro
+	                                     de la identidad; entre identidades puede repetirse).
+	                                     Un bloque que atraviese otra identidad anidada
+	                                     es rechazado.
+	    generate [bloque] [longitud]    genera un codinome libre Y ya crea la entrada
+	                                     real via 'pass generate' — no registra la
+	                                     asociacion (use 'add' despues). Un bloque que
+	                                     atraviese otra identidad anidada es
+	                                     rechazado (evita cifrar con la clave equivocada).
+	
+	More information may be found in the pass-secrets(1) man page.
+	_I18N_EOF_ES
+}
 
+_secrets_usage_text_pt() {
+	cat <<-'_I18N_EOF_PT'
+	{PROG} - alternativa ao pass-tomb para obscurecer a árvore do pass
+	
+	Uso:
+	    {PROG} <identidade> dir     <bloco>
+	    {PROG} <identidade> word    <termo> [contexto]
+	    {PROG} <identidade> count   <bloco>
+	    {PROG} <identidade> edit
+	    {PROG} <identidade> check
+	    {PROG} <identidade> struct
+	    {PROG} <identidade> add     <caminho-relativo>
+	    {PROG} <identidade> rebuild [--yes] [--prune]
+	    {PROG} <identidade> mask add  <caminho-dir>
+	    {PROG} <identidade> mask dir  <caminho-dir>
+	    {PROG} <identidade> mask word <termo> [contexto]
+	    {PROG} <identidade> mask edit
+	    {PROG} <identidade> mask list
+	    {PROG} <identidade> namegen  [bloco] [-n tamanho] [-u quantidade]
+	    {PROG} <identidade> generate [bloco] [tamanho] [flags do pass generate]
+	
 	identidade:
 	    qualquer diretório da árvore do pass que contenha seu próprio
 	    .gpg-id, em qualquer profundidade. NOMES DE IDENTIDADE DEVEM SER
 	    ÚNICOS EM TODA A ÁRVORE — dois diretórios com .gpg-id e o mesmo
 	    nome tornam o comando ambíguo e são recusados.
-
+	
 	comandos:
 	    dir     <bloco>                lista entradas cujo caminho começa com <bloco>
 	    word    <termo> [contexto]     busca um termo no mapa (grep -C)
@@ -105,10 +448,84 @@ cmd_secrets_usage() {
 	                                    associação (use 'add' depois). Bloco que
 	                                    atravessa outra identidade aninhada é
 	                                    recusado (evita cifrar com a chave errada).
-
+	
 	More information may be found in the pass-secrets(1) man page.
-	_EOF
+	_I18N_EOF_PT
 }
+
+# >>> END AUTO-GENERATED I18N CATALOG <<<
+
+# Detecta o idioma a partir de PASS_SECRETS_LANG (override explícito,
+# tem prioridade) ou de LC_ALL/LC_MESSAGES/LANG (primeiros 2 caracteres
+# da locale). Só aceita um código se existir catálogo pra ele
+# (_SECRETS_LANGS_AVAILABLE, preenchido pelo gerador); qualquer coisa
+# não suportada cai pra português.
+_secrets_detect_lang() {
+	local override="${PASS_SECRETS_LANG:-}"
+	local candidate=""
+	if [[ -n "$override" ]]; then
+		candidate="${override:0:2}"
+	else
+		local loc="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}"
+		candidate="${loc:0:2}"
+	fi
+	candidate="${candidate,,}"
+	local disponivel
+	for disponivel in "${_SECRETS_LANGS_AVAILABLE[@]}"; do
+		[[ "$disponivel" == "$candidate" ]] && { echo "$candidate"; return; }
+	done
+	echo "pt"
+}
+readonly SECRETS_LANG="$(_secrets_detect_lang)"
+
+# Retorna (via stdout) a mensagem já formatada. Uso: _secrets_msg CHAVE
+# arg1 arg2 ... — os args preenchem os %s do template, na ordem (o
+# bash printf builtin também aceita %N$s pra quem traduzir precisar
+# reordenar argumentos por causa da gramática do idioma). Cadeia de
+# fallback se a chave não existir no idioma detectado (tradução
+# incompleta): idioma pedido -> inglês -> português. Nunca interpola
+# dado do usuário diretamente no template — dado do usuário sempre
+# entra como argumento posicional de printf, nunca como parte do
+# formato.
+_secrets_msg() {
+	local key="$1"; shift
+	local template=""
+	local lang varname
+	for lang in "$SECRETS_LANG" en pt; do
+		varname="_SECRETS_MSG_${lang^^}"
+		if declare -p "$varname" &>/dev/null; then
+			local -n arr="$varname"
+			if [[ -n "${arr[$key]:-}" ]]; then
+				template="${arr[$key]}"
+				break
+			fi
+		fi
+	done
+	printf -- "$template" "$@"
+}
+
+cmd_secrets_version() {
+	echo "$VERSION_SECRETS"
+}
+
+# Texto de --help: cada idioma tem sua própria função
+# _secrets_usage_text_<codigo> (gerada a partir de _usage_full no
+# JSON), com {PROG} como placeholder pra "$PROGRAM $COMMAND" — troca
+# de idioma pra idioma feita por substituição de texto em vez de
+# printf, porque o bloco é grande demais pra %s posicional ser
+# sustentável de manter em tradução. Mesma cadeia de fallback do
+# _secrets_msg: idioma detectado -> inglês -> português.
+cmd_secrets_usage() {
+	local fn="_secrets_usage_text_${SECRETS_LANG}"
+	if ! declare -f "$fn" >/dev/null 2>&1; then
+		fn="_secrets_usage_text_en"
+		declare -f "$fn" >/dev/null 2>&1 || fn="_secrets_usage_text_pt"
+	fi
+	local text
+	text="$("$fn")"
+	printf '%s\n' "${text//\{PROG\}/$PROGRAM $COMMAND}"
+}
+
 
 # ---------------------------------------------------------------------
 # Resolução de identidade e I/O do mapa
@@ -133,9 +550,9 @@ _secrets_re_escape() {
 # profundidade. Recusa se ambíguo (mais de um .gpg-id com esse nome).
 _secrets_resolve() {
 	local nome="$1"
-	[[ -n "$nome" ]] || die "$PROGRAM $COMMAND: nome de identidade vazio"
+	[[ -n "$nome" ]] || die "$(_secrets_msg err_identity_empty "$PROGRAM $COMMAND")"
 	check_sneaky_paths "$nome"
-	_secrets_valid_token "$nome" || die "$PROGRAM $COMMAND: nome de identidade inválido"
+	_secrets_valid_token "$nome" || die "$(_secrets_msg err_identity_invalid "$PROGRAM $COMMAND")"
 
 	local -a matches=()
 	local d
@@ -145,16 +562,16 @@ _secrets_resolve() {
 
 	case "${#matches[@]}" in
 		0)
-			die "$PROGRAM $COMMAND: identidade '$nome' não encontrada (nenhum diretório com esse nome contém .gpg-id)"
+			die "$(_secrets_msg err_identity_not_found "$PROGRAM $COMMAND" "$nome")"
 			;;
 		1)
 			printf '%s\n' "${matches[0]}"
 			;;
 		*)
 			{
-				echo "$PROGRAM $COMMAND: identidade '$nome' é ambígua, encontrada em múltiplos caminhos:"
+				echo "$(_secrets_msg err_identity_ambiguous_header "$PROGRAM $COMMAND" "$nome")"
 				printf '  %s\n' "${matches[@]}"
-				echo "$PROGRAM $COMMAND: renomeie um dos diretórios para desambiguar (nomes de identidade devem ser únicos em toda a árvore)"
+				echo "$(_secrets_msg err_identity_ambiguous_hint "$PROGRAM $COMMAND")"
 			} >&2
 			exit 1
 			;;
@@ -176,7 +593,7 @@ _secrets_mapfile() {
 		local perms
 		perms=$(stat -c '%a' "$mapfile")
 		[[ "$perms" == "600" ]] || \
-			die "$PROGRAM $COMMAND: permissões inseguras em '$mapfile' ($perms) — corrija para 600"
+			die "$(_secrets_msg err_insecure_perms "$PROGRAM $COMMAND" "$mapfile" "$perms")"
 	fi
 	printf '%s\n' "$mapfile"
 }
@@ -205,7 +622,7 @@ _secrets_recipients() {
 		args+=( -r "$id" )
 	done < "$dir/.gpg-id"
 
-	[[ ${#args[@]} -gt 0 ]] || die "$PROGRAM $COMMAND: '$dir/.gpg-id' está vazio"
+	[[ ${#args[@]} -gt 0 ]] || die "$(_secrets_msg err_gpgid_empty "$PROGRAM $COMMAND" "$dir/.gpg-id")"
 	printf '%s\n' "${args[@]}"
 }
 
@@ -214,10 +631,10 @@ _secrets_load() {
 	local mapfile
 	mapfile=$(_secrets_mapfile "$nome" "$nomearq") || exit 1
 	[[ -f "$mapfile" ]] || \
-		die "$PROGRAM $COMMAND: '$nome' ainda não tem '$nomearq' — crie uma entrada primeiro"
+		die "$(_secrets_msg err_no_mapfile_yet "$PROGRAM $COMMAND" "$nome" "$nomearq")"
 
 	$GPG -d "${GPG_OPTS[@]}" "$mapfile" 2>/dev/null || \
-		die "$PROGRAM $COMMAND: falha ao descriptografar '$mapfile'"
+		die "$(_secrets_msg err_decrypt_failed "$PROGRAM $COMMAND" "$mapfile")"
 }
 
 # Cifra e salva um arquivo da identidade, reaproveitando GPG/GPG_OPTS e
@@ -240,11 +657,11 @@ _secrets_save() {
 	# silenciosamente para a chave padrão do sistema em vez da chave da
 	# identidade, caso _secrets_recipients falhe silenciosamente por
 	# qualquer motivo — quebrando o isolamento por identidade.
-	[[ ${#recip[@]} -gt 0 ]] || die "$PROGRAM $COMMAND: nenhum destinatário GPG resolvido para '$nome' — abortando para não cifrar com chave padrão do sistema"
+	[[ ${#recip[@]} -gt 0 ]] || die "$(_secrets_msg err_no_recipients_abort_default "$PROGRAM $COMMAND" "$nome")"
 
 	set_git "$mapfile"
 	printf '%s\n' "$conteudo" | $GPG -e "${recip[@]}" -o "$mapfile" "${GPG_OPTS[@]}" || \
-		die "$PROGRAM $COMMAND: falha ao cifrar o mapa de '$nome'"
+		die "$(_secrets_msg err_encrypt_failed "$PROGRAM $COMMAND" "$nome")"
 	chmod 600 "$mapfile" 2>/dev/null
 	git_add_file "$mapfile" "$msg"
 }
@@ -277,7 +694,7 @@ _secrets_check_no_nested_crossing() {
 		[[ -n "$comp" ]] || continue
 		partial="$partial/$comp"
 		if [[ -f "$partial/.gpg-id" ]]; then
-			die "$PROGRAM $COMMAND: bloco '$bloco' atravessa a identidade aninhada '$comp' — recusado (isso cifraria/procuraria com a chave errada)"
+			die "$(_secrets_msg err_nested_crossing "$PROGRAM $COMMAND" "$bloco" "$comp")"
 		fi
 	done
 }
@@ -289,7 +706,7 @@ _secrets_check_no_nested_crossing() {
 cmd_secrets_dir() {
 	local nome="$1" bloco="$2"
 	if [[ -z "$bloco" ]] || ! _secrets_valid_token "$bloco"; then
-		die "Usage: $PROGRAM $COMMAND <identidade> dir <bloco>"
+		die "$(_secrets_msg usage_dir "$PROGRAM $COMMAND")"
 	fi
 
 	local content out
@@ -297,7 +714,7 @@ cmd_secrets_dir() {
 	local bloco_esc
 	bloco_esc=$(_secrets_re_escape "$bloco")
 	out=$(grep -E "^${bloco_esc}(/[^=]*)?[[:space:]]*=" <<< "$content")
-	[[ -n "$out" ]] || die "$PROGRAM $COMMAND: nenhuma entrada sob '$bloco' no mapa de '$nome'"
+	[[ -n "$out" ]] || die "$(_secrets_msg err_no_entries_under_block "$PROGRAM $COMMAND" "$bloco" "$nome")"
 	printf '%s\n' "$out"
 }
 
@@ -308,8 +725,8 @@ cmd_secrets_count() {
 
 cmd_secrets_word() {
 	local nome="$1" termo="$2" ctx="${3:-0}"
-	[[ -n "$termo" ]] || die "Usage: $PROGRAM $COMMAND <identidade> word <termo> [contexto]"
-	[[ "$ctx" =~ ^[0-9]+$ ]] || die "$PROGRAM $COMMAND: contexto deve ser inteiro"
+	[[ -n "$termo" ]] || die "$(_secrets_msg usage_word "$PROGRAM $COMMAND")"
+	[[ "$ctx" =~ ^[0-9]+$ ]] || die "$(_secrets_msg err_context_must_be_int "$PROGRAM $COMMAND")"
 
 	local content
 	content=$(_secrets_load "$nome") || exit 1
@@ -318,8 +735,8 @@ cmd_secrets_word() {
 	local ret=$?
 	case $ret in
 		0) return 0 ;;
-		1) die "$PROGRAM $COMMAND: nenhuma ocorrência de '$termo'" ;;
-		*) die "$PROGRAM $COMMAND: erro durante a busca (grep retornou $ret)" ;;
+		1) die "$(_secrets_msg err_no_occurrence "$PROGRAM $COMMAND" "$termo")" ;;
+		*) die "$(_secrets_msg err_search_error "$PROGRAM $COMMAND" "$ret")" ;;
 	esac
 }
 
@@ -349,7 +766,7 @@ _secrets_edit_file() {
 		local perms
 		perms=$(stat -c '%a' "$mapfile")
 		[[ "$perms" == "600" ]] || \
-			die "$PROGRAM $COMMAND: permissões inseguras em '$mapfile' ($perms) — corrija para 600"
+			die "$(_secrets_msg err_insecure_perms "$PROGRAM $COMMAND" "$mapfile" "$perms")"
 	fi
 
 	tmpdir # define $SECURE_TMPDIR e já registra o trap de limpeza (shred se não for tmpfs)
@@ -359,16 +776,16 @@ _secrets_edit_file() {
 	local action="Add"
 	if [[ -f "$mapfile" ]]; then
 		$GPG -d -o "$tmp_file" "${GPG_OPTS[@]}" "$mapfile" || \
-			die "$PROGRAM $COMMAND: falha ao descriptografar '$mapfile'"
+			die "$(_secrets_msg err_decrypt_failed "$PROGRAM $COMMAND" "$mapfile")"
 		action="Edit"
 	fi
 
 	"${EDITOR:-vi}" "$tmp_file"
-	[[ -f "$tmp_file" ]] || die "$PROGRAM $COMMAND: nada foi salvo"
+	[[ -f "$tmp_file" ]] || die "$(_secrets_msg err_nothing_saved "$PROGRAM $COMMAND")"
 
 	if [[ "$action" == "Edit" ]]; then
 		$GPG -d -o - "${GPG_OPTS[@]}" "$mapfile" 2>/dev/null | diff - "$tmp_file" &>/dev/null && \
-			die "$PROGRAM $COMMAND: sem alterações"
+			die "$(_secrets_msg err_no_changes "$PROGRAM $COMMAND")"
 	fi
 
 	local recipients_raw
@@ -376,7 +793,7 @@ _secrets_edit_file() {
 	local -a recip=()
 	local linha_recip
 	while IFS= read -r linha_recip; do recip+=("$linha_recip"); done <<< "$recipients_raw"
-	[[ ${#recip[@]} -gt 0 ]] || die "$PROGRAM $COMMAND: nenhum destinatário GPG resolvido para '$nome' — abortando"
+	[[ ${#recip[@]} -gt 0 ]] || die "$(_secrets_msg err_no_recipients_abort "$PROGRAM $COMMAND" "$nome")"
 
 	set_git "$mapfile"
 	# Sem checar interatividade, isto era um risco de LOOP INFINITO real
@@ -389,27 +806,29 @@ _secrets_edit_file() {
 	# continua idêntico a antes.
 	while ! $GPG -e "${recip[@]}" -o "$mapfile" "${GPG_OPTS[@]}" "$tmp_file"; do
 		if [[ -t 0 ]]; then
-			yesno "$PROGRAM $COMMAND: falha ao cifrar. Tentar novamente?"
+			yesno "$(_secrets_msg prompt_encrypt_retry "$PROGRAM $COMMAND")"
 		else
-			die "$PROGRAM $COMMAND: falha ao cifrar e entrada padrão não é interativa — abortando para não entrar em loop infinito. Verifique o .gpg-id de '$nome'."
+			die "$(_secrets_msg err_encrypt_noninteractive "$PROGRAM $COMMAND" "$nome")"
 		fi
 	done
 	chmod 600 "$mapfile" 2>/dev/null
+	# Mensagem de commit sempre em inglês, independente do idioma da
+	# interface — convenção de histórico do git, não faz parte do i18n.
 	git_add_file "$mapfile" "$action $label for $nome using ${EDITOR:-vi}."
 }
 
 cmd_secrets_add() {
 	local nome="$1" caminho="$2"
 	[[ -n "$nome" && -n "$caminho" ]] || \
-		die "Usage: $PROGRAM $COMMAND <identidade> add <caminho-relativo>"
+		die "$(_secrets_msg usage_add "$PROGRAM $COMMAND")"
 	check_sneaky_paths "$caminho"
-	_secrets_valid_token "$caminho" || die "$PROGRAM $COMMAND: caminho inválido"
+	_secrets_valid_token "$caminho" || die "$(_secrets_msg err_invalid_path "$PROGRAM $COMMAND")"
 
 	local dir
 	dir=$(_secrets_resolve "$nome") || exit 1
 
 	[[ -f "$dir/$caminho.gpg" ]] || \
-		echo "$PROGRAM $COMMAND: aviso — '$caminho' não existe em '$dir' ainda; associação ficará órfã até a entrada real ser criada" >&2
+		echo "$(_secrets_msg warn_path_missing_orphan "$PROGRAM $COMMAND" "$caminho" "$dir")" >&2
 
 	local content=""
 	local mf
@@ -429,9 +848,9 @@ cmd_secrets_add() {
 		# aqui a confirmação era a ÚNICA proteção. Fora de terminal,
 		# recusamos em vez de assumir "sim".
 		if [[ -t 0 ]]; then
-			yesno "$PROGRAM $COMMAND: '$caminho' já tem associação em '$nome'. Sobrescrever?"
+			yesno "$(_secrets_msg prompt_overwrite "$PROGRAM $COMMAND" "$caminho" "$nome")"
 		else
-			die "$PROGRAM $COMMAND: '$caminho' já tem associação em '$nome' e a entrada padrão não é interativa — recusando sobrescrever sem confirmação explícita. Rode de um terminal interativo."
+			die "$(_secrets_msg err_overwrite_noninteractive "$PROGRAM $COMMAND" "$caminho" "$nome")"
 		fi
 		content=$(grep -vE "^${caminho_esc}[[:space:]]*=" <<< "$content")
 	fi
@@ -440,8 +859,8 @@ cmd_secrets_add() {
 	# pass original para senhas definidas manualmente (cmd_insert): dado
 	# sensível só entra via prompt, nunca via argv/histórico do shell.
 	local nome_real
-	read -r -p "Nome real para '$caminho': " nome_real
-	[[ -n "$nome_real" ]] || die "$PROGRAM $COMMAND: nome real vazio, nada foi salvo"
+	read -r -p "$(_secrets_msg prompt_real_name "$caminho")" nome_real
+	[[ -n "$nome_real" ]] || die "$(_secrets_msg err_real_name_empty "$PROGRAM $COMMAND")"
 
 	content="$(printf '%s\n%s = %s\n' "$content" "$caminho" "$nome_real" | sed '/^$/d' | sort -u)"
 	_secrets_save "$nome" "$content" "Add secrets association for $caminho in $nome."
@@ -457,15 +876,15 @@ cmd_secrets_add() {
 cmd_secrets_mask_add() {
 	local nome="$1" caminho_dir="$2"
 	[[ -n "$nome" && -n "$caminho_dir" ]] || \
-		die "Usage: $PROGRAM $COMMAND <identidade> mask add <caminho-dir>"
+		die "$(_secrets_msg usage_mask_add "$PROGRAM $COMMAND")"
 	check_sneaky_paths "$caminho_dir"
-	_secrets_valid_token "$caminho_dir" || die "$PROGRAM $COMMAND: caminho de diretório inválido"
+	_secrets_valid_token "$caminho_dir" || die "$(_secrets_msg err_invalid_dir_path "$PROGRAM $COMMAND")"
 
 	local dir
 	dir=$(_secrets_resolve "$nome") || exit 1
 
 	[[ -d "$dir/$caminho_dir" ]] || \
-		echo "$PROGRAM $COMMAND: aviso — '$caminho_dir' não é um diretório existente em '$dir' ainda" >&2
+		echo "$(_secrets_msg warn_dir_missing "$PROGRAM $COMMAND" "$caminho_dir" "$dir")" >&2
 
 	local content=""
 	local mf
@@ -476,8 +895,8 @@ cmd_secrets_mask_add() {
 	# decisão do pass original para dado sensível definido manualmente:
 	# só entra via prompt, nunca via argv/histórico do shell.
 	local alias_email
-	read -r -p "Alias de e-mail para associar a '$caminho_dir': " alias_email
-	[[ -n "$alias_email" ]] || die "$PROGRAM $COMMAND: alias vazio, nada foi salvo"
+	read -r -p "$(_secrets_msg prompt_alias "$caminho_dir")" alias_email
+	[[ -n "$alias_email" ]] || die "$(_secrets_msg err_alias_empty "$PROGRAM $COMMAND")"
 
 	content="$(printf '%s\n%s = %s\n' "$content" "$alias_email" "$caminho_dir" | sed '/^$/d' | sort -u)"
 	_secrets_save "$nome" "$content" "Add mask association in $nome." .mask.gpg
@@ -486,7 +905,7 @@ cmd_secrets_mask_add() {
 cmd_secrets_mask_dir() {
 	local nome="$1" caminho_dir="$2"
 	if [[ -z "$caminho_dir" ]] || ! _secrets_valid_token "$caminho_dir"; then
-		die "Usage: $PROGRAM $COMMAND <identidade> mask dir <caminho-dir>"
+		die "$(_secrets_msg usage_mask_dir "$PROGRAM $COMMAND")"
 	fi
 
 	local content out
@@ -494,14 +913,14 @@ cmd_secrets_mask_dir() {
 	local dir_esc
 	dir_esc=$(_secrets_re_escape "$caminho_dir")
 	out=$(grep -E "=[[:space:]]*${dir_esc}\$" <<< "$content")
-	[[ -n "$out" ]] || die "$PROGRAM $COMMAND: nenhum alias associado a '$caminho_dir' no mapa de '$nome'"
+	[[ -n "$out" ]] || die "$(_secrets_msg err_no_alias_for_dir "$PROGRAM $COMMAND" "$caminho_dir" "$nome")"
 	printf '%s\n' "$out"
 }
 
 cmd_secrets_mask_word() {
 	local nome="$1" termo="$2" ctx="${3:-0}"
-	[[ -n "$termo" ]] || die "Usage: $PROGRAM $COMMAND <identidade> mask word <termo> [contexto]"
-	[[ "$ctx" =~ ^[0-9]+$ ]] || die "$PROGRAM $COMMAND: contexto deve ser inteiro"
+	[[ -n "$termo" ]] || die "$(_secrets_msg usage_mask_word "$PROGRAM $COMMAND")"
+	[[ "$ctx" =~ ^[0-9]+$ ]] || die "$(_secrets_msg err_context_must_be_int "$PROGRAM $COMMAND")"
 
 	local content
 	content=$(_secrets_load "$nome" .mask.gpg) || exit 1
@@ -510,8 +929,8 @@ cmd_secrets_mask_word() {
 	local ret=$?
 	case $ret in
 		0) return 0 ;;
-		1) die "$PROGRAM $COMMAND: nenhuma ocorrência de '$termo'" ;;
-		*) die "$PROGRAM $COMMAND: erro durante a busca (grep retornou $ret)" ;;
+		1) die "$(_secrets_msg err_no_occurrence "$PROGRAM $COMMAND" "$termo")" ;;
+		*) die "$(_secrets_msg err_search_error "$PROGRAM $COMMAND" "$ret")" ;;
 	esac
 }
 
@@ -533,7 +952,7 @@ cmd_secrets_mask() {
 		word) cmd_secrets_mask_word "$nome" "$@" ;;
 		list) cmd_secrets_mask_list "$nome" "$@" ;;
 		edit) cmd_secrets_mask_edit "$nome" "$@" ;;
-		*) die "$PROGRAM $COMMAND: subcomando de mask desconhecido '$sub' (use: add|dir|word|edit|list)" ;;
+		*) die "$(_secrets_msg err_unknown_mask_subcmd "$PROGRAM $COMMAND" "$sub")" ;;
 	esac
 }
 
@@ -548,7 +967,7 @@ _secrets_check_mask_orphans() {
 
 	local content
 	content=$($GPG -d "${GPG_OPTS[@]}" "$mf" 2>/dev/null) || {
-		echo "$PROGRAM $COMMAND: aviso — falha ao decifrar .mask.gpg para checagem de órfãos" >&2
+		echo "$(_secrets_msg warn_mask_decrypt_failed "$PROGRAM $COMMAND")" >&2
 		return 1
 	}
 
@@ -563,7 +982,7 @@ _secrets_check_mask_orphans() {
 
 	if [[ ${#orfas[@]} -gt 0 ]]; then
 		{
-			echo "$PROGRAM $COMMAND: mask — entradas apontando para diretório que não existe mais:"
+			echo "$(_secrets_msg warn_mask_orphans_header "$PROGRAM $COMMAND")"
 			printf '  %s\n' "${orfas[@]}"
 		} >&2
 	fi
@@ -614,7 +1033,7 @@ _secrets_check_collisions() {
 		count=$(grep -c . <<< "$linhas")
 		if [[ "$count" -gt 1 ]]; then
 			{
-				echo "$PROGRAM $COMMAND: aviso — nome de identidade '$nome' está duplicado na árvore:"
+				echo "$(_secrets_msg warn_identity_name_dup "$PROGRAM $COMMAND" "$nome")"
 				while IFS= read -r linha_dup; do printf '  %s\n' "$linha_dup"; done <<< "$linhas"
 			} >&2
 		fi
@@ -656,7 +1075,7 @@ cmd_secrets_struct() {
 	while IFS= read -r item; do items+=("$item"); done < <(_secrets_scan "$dir" | sort)
 
 	if [[ ${#items[@]} -eq 0 ]]; then
-		echo "$PROGRAM $COMMAND: '$nome' não tem entradas ainda" >&2
+		echo "$(_secrets_msg err_struct_no_entries "$PROGRAM $COMMAND" "$nome")" >&2
 		return 1
 	fi
 	printf '%s\n' "${items[@]}"
@@ -674,7 +1093,7 @@ cmd_secrets_rebuild() {
 			--yes) auto_yes=1; shift ;;
 			--prune) prune=1; shift ;;
 			--dry-run) dry_run=1; shift ;;
-			*) die "$PROGRAM $COMMAND: opção desconhecida '$1'" ;;
+			*) die "$(_secrets_msg err_unknown_option "$PROGRAM $COMMAND" "$1")" ;;
 		esac
 	done
 
@@ -726,8 +1145,8 @@ cmd_secrets_rebuild() {
 			# silenciosamente em (pendente), como se --yes tivesse sido
 			# passado, sem nenhum aviso. Agora EOF interrompe com erro
 			# explícito; só um Enter vazio de verdade vira (pendente).
-			if ! read -r -p "Nome real para '$caminho'? " nome_real; then
-				die "$PROGRAM $COMMAND: entrada padrão terminou (EOF) antes de perguntar o nome real de '$caminho' — nada foi salvo. Rode com --yes ou responda a partir de um terminal interativo."
+			if ! read -r -p "$(_secrets_msg prompt_real_name_rebuild "$caminho")" nome_real; then
+				die "$(_secrets_msg err_rebuild_eof "$PROGRAM $COMMAND" "$caminho")"
 			fi
 			[[ -n "$nome_real" ]] || nome_real="(pendente)"
 		fi
@@ -736,16 +1155,16 @@ cmd_secrets_rebuild() {
 
 	if [[ ${#orphans[@]} -gt 0 ]]; then
 		{
-			echo "$PROGRAM $COMMAND: entradas órfãs (no mapa, não existem mais no disco):"
+			echo "$(_secrets_msg warn_orphans_header "$PROGRAM $COMMAND")"
 			printf '  %s\n' "${orphans[@]}"
 		} >&2
 		if [[ $prune -eq 1 && $dry_run -eq 0 ]]; then
 			for caminho in "${orphans[@]}"; do
 				content=$(grep -vFx "$caminho = ${old_map[$caminho]}" <<< "$content")
 			done
-			echo "$PROGRAM $COMMAND: órfãs removidas (--prune)" >&2
+			echo "$(_secrets_msg info_orphans_pruned "$PROGRAM $COMMAND")" >&2
 		else
-			echo "$PROGRAM $COMMAND: mantidas — rode com --prune para remover" >&2
+			echo "$(_secrets_msg info_orphans_kept "$PROGRAM $COMMAND")" >&2
 		fi
 	fi
 
@@ -754,15 +1173,15 @@ cmd_secrets_rebuild() {
 	local dupes
 	dupes=$(_secrets_find_duplicates "$content")
 	if [[ -n "$dupes" ]]; then
-		echo "$PROGRAM $COMMAND: nomes reais duplicados (mesmo nome real em codinomes diferentes):" >&2
+		echo "$(_secrets_msg warn_dup_real_names_header "$PROGRAM $COMMAND")" >&2
 		while IFS='|' read -r val keys; do
 			echo "  '$val' -> $keys" >&2
 		done <<< "$dupes"
 	fi
 
-	echo "$PROGRAM $COMMAND: '$nome' — ${#new_entries[@]} novas, ${#orphans[@]} órfãs" >&2
+	echo "$(_secrets_msg info_rebuild_summary "$PROGRAM $COMMAND" "$nome" "${#new_entries[@]}" "${#orphans[@]}")" >&2
 	if [[ $dry_run -eq 1 ]]; then
-		echo "$PROGRAM $COMMAND: --dry-run, nada foi salvo" >&2
+		echo "$(_secrets_msg info_dry_run "$PROGRAM $COMMAND")" >&2
 		return 0
 	fi
 
@@ -822,7 +1241,7 @@ _secrets_free_codename() {
 		[[ -e "$dir/$caminho.gpg" || -e "$dir/$caminho" ]] || { printf '%s\n' "$caminho"; return 0; }
 		(( tentativas++ ))
 	done
-	die "$PROGRAM $COMMAND: não foi possível gerar um codinome livre após $tentativas tentativas"
+	die "$(_secrets_msg err_no_free_codename "$PROGRAM $COMMAND" "$tentativas")"
 }
 
 # Modo manual — só sugere nome(s) livre(s), não cria nada. Útil quando
@@ -838,8 +1257,8 @@ cmd_secrets_namegen() {
 			*) bloco="$1"; shift ;;
 		esac
 	done
-	[[ "$len" =~ ^[0-9]+$ && "$len" -gt 0 ]] || die "$PROGRAM $COMMAND: tamanho inválido"
-	[[ "$qtd" =~ ^[0-9]+$ && "$qtd" -gt 0 ]] || die "$PROGRAM $COMMAND: quantidade inválida"
+	[[ "$len" =~ ^[0-9]+$ && "$len" -gt 0 ]] || die "$(_secrets_msg err_invalid_length "$PROGRAM $COMMAND")"
+	[[ "$qtd" =~ ^[0-9]+$ && "$qtd" -gt 0 ]] || die "$(_secrets_msg err_invalid_count "$PROGRAM $COMMAND")"
 
 	# Faltava aqui: 'generate' valida o bloco com _secrets_valid_token
 	# antes de usá-lo, mas 'namegen' nunca validava — confirmado na
@@ -851,7 +1270,7 @@ cmd_secrets_namegen() {
 	# mas isso ainda é uma violação real da fronteira da identidade e
 	# quebra a consistência com 'generate' que o comentário abaixo já
 	# dizia ser a intenção.
-	[[ -n "$bloco" && "$bloco" != "." ]] && { _secrets_valid_token "$bloco" || die "$PROGRAM $COMMAND: bloco inválido"; }
+	[[ -n "$bloco" && "$bloco" != "." ]] && { _secrets_valid_token "$bloco" || die "$(_secrets_msg err_invalid_block "$PROGRAM $COMMAND")"; }
 
 	local dir
 	dir=$(_secrets_resolve "$nome") || exit 1
@@ -886,7 +1305,7 @@ cmd_secrets_generate() {
 	# "$@" daqui pra frente são só flags remanescentes do pass generate
 	# (--no-symbols, --clip, --qrcode, etc), repassadas como estão.
 
-	[[ -n "$bloco" && "$bloco" != "." ]] && { _secrets_valid_token "$bloco" || die "$PROGRAM $COMMAND: bloco inválido"; }
+	[[ -n "$bloco" && "$bloco" != "." ]] && { _secrets_valid_token "$bloco" || die "$(_secrets_msg err_invalid_block "$PROGRAM $COMMAND")"; }
 
 	local dir
 	dir=$(_secrets_resolve "$nome") || exit 1
@@ -906,8 +1325,8 @@ cmd_secrets_generate() {
 
 	cmd_generate "$@" "$caminho_pass" "$len"
 
-	echo "$PROGRAM $COMMAND: codinome gerado — '$caminho_relativo' (em '$nome')" >&2
-	echo "$PROGRAM $COMMAND: para registrar a associação: $PROGRAM $COMMAND $nome add '$caminho_relativo' '<nome real>'" >&2
+	echo "$(_secrets_msg info_codename_generated "$PROGRAM $COMMAND" "$caminho_relativo" "$nome")" >&2
+	echo "$(_secrets_msg info_register_hint "$PROGRAM $COMMAND" "$PROGRAM $COMMAND" "$nome" "$caminho_relativo")" >&2
 }
 
 # ---------------------------------------------------------------------
@@ -933,6 +1352,6 @@ case "$SUBCMD" in
 	generate) cmd_secrets_generate "$IDENTIDADE" "$@" ;;
 	version|--version) cmd_secrets_version ;;
 	""|-h|--help|help) cmd_secrets_usage; exit 1 ;;
-	*) die "$PROGRAM $COMMAND: comando desconhecido '$SUBCMD' (use: dir|word|count|edit|check|struct|add|rebuild|mask|namegen|generate)" ;;
+	*) die "$(_secrets_msg err_unknown_subcmd "$PROGRAM $COMMAND" "$SUBCMD")" ;;
 esac
 exit 0

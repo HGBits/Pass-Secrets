@@ -5,7 +5,7 @@ An extension for [password-store (pass)](https://www.passwordstore.org/) that ob
 
 Unlike `pass-tomb` (which requires encrypted volumes via Loopback and superuser privileges), **pass-secrets** uses encrypted mappings (`.secrets.gpg` and `.mask.gpg`) based on the GPG key of each directory. Services and folders use random codenames, and the real association is kept in the map per identity.
 
-**Current version: 2.5.1**
+**Current version: 2.6.0**
 
 ---
 
