@@ -133,6 +133,37 @@ In all three cases, normal interactive behavior (asking and waiting for your ans
 
 ---
 
+## 🤝 How to Help / How to Contribute
+
+### Translating or fixing a language
+
+Every pass-secrets message lives in simple source files, one per language, in the [`i18n/`](i18n/) folder (`pt.json`, `en.json`, `es.json`, `ru.json`). These are plain JSON files — you don't need to know bash or understand the script internals to translate.
+
+**To fix an existing translation:**
+1. Open that language's `.json` in any text editor.
+2. Edit the text between quotes for the key you want to fix. Keep the same number of `%s` as the original — those are placeholders filled in at runtime (identity name, path, etc.).
+3. Run `python3 tools/gen-i18n.py secrets.bash` to apply the change inside the script.
+4. Run `bash -n secrets.bash` to confirm the syntax is still valid.
+5. Open a Pull Request.
+
+**To add a language that doesn't exist yet:**
+1. Copy `i18n/en.json` to `i18n/<language-code>.json` (e.g. `i18n/fr.json` for French) as a starting point.
+2. Translate the values — it doesn't have to be all at once. Any key you leave untranslated automatically falls back to English (and then Portuguese) until someone completes it.
+3. Don't forget the special `_usage_full` key — it's the full `--help` text for that language. Use `{PROG}` in place of "pass secrets" (this gets substituted automatically at runtime).
+4. Run `python3 tools/gen-i18n.py secrets.bash` — it detects the new file on its own, nothing else needs editing.
+5. Test with `PASS_SECRETS_LANG=<code> pass secrets <identity> ...` and confirm translated keys come out right and missing ones fall back correctly.
+6. Open a Pull Request with the new `.json` and the regenerated `secrets.bash`.
+
+None of these steps require any bash knowledge. `tools/gen-i18n.py` only needs Python 3 (no external dependencies) and is the only tool needed to go from a translated `.json` to the final `secrets.bash`.
+
+### Other ways to contribute
+
+* **Report bugs and unexpected behavior** — especially in non-interactive contexts (scripts, cron), boundaries between nested identities, and anything that looks like an uncovered edge case.
+* **Review security** — the project's entire threat model (per-identity isolation, `.gpg-id` signature verification, path traversal validation) is open to scrutiny; a PR with practical proof of a flaw (not just theory) is always welcome.
+* **Review existing translations** — even without being an "official" translator for a language, flagging an odd or incorrect translation via an issue already helps.
+
+---
+
 ## 📄 License
 
 This project is distributed under the same license as [password-store](https://www.passwordstore.org/) (GPLv2+).

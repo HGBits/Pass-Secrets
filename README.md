@@ -133,6 +133,37 @@ Os arquivos `.secrets.gpg` e `.mask.gpg` são mantidos criptografados em disco u
 
 ---
 
+## 🤝 Como Ajudar / Como Colaborar
+
+### Traduzindo ou corrigindo um idioma
+
+Todas as mensagens do pass-secrets ficam em arquivos-fonte simples, um por idioma, na pasta [`i18n/`](i18n/) (`pt.json`, `en.json`, `es.json`, `ru.json`). São arquivos JSON comuns — não precisa saber bash nem entender o script pra traduzir.
+
+**Para corrigir uma tradução existente:**
+1. Abra o `.json` do idioma em qualquer editor de texto.
+2. Edite o texto entre aspas da chave que quiser corrigir. Mantenha a mesma quantidade de `%s` que o original — são placeholders preenchidos em runtime (nome de identidade, caminho, etc.).
+3. Rode `python3 tools/gen-i18n.py secrets.bash` pra aplicar a mudança dentro do script.
+4. Rode `bash -n secrets.bash` pra conferir que a sintaxe continua válida.
+5. Abra um Pull Request.
+
+**Para adicionar um idioma novo que ainda não existe:**
+1. Copie `i18n/en.json` para `i18n/<código-do-idioma>.json` (ex: `i18n/fr.json` para francês) como ponto de partida.
+2. Traduza os valores — não precisa ser tudo de uma vez. Qualquer chave que você deixar sem traduzir cai automaticamente para inglês (e depois para português) até alguém completar.
+3. Não esqueça da chave especial `_usage_full` — é o texto completo do `--help` naquele idioma. Use `{PROG}` no lugar de "pass secrets" (isso é substituído automaticamente em runtime).
+4. Rode `python3 tools/gen-i18n.py secrets.bash` — ele detecta o arquivo novo sozinho, não precisa editar mais nada.
+5. Teste com `PASS_SECRETS_LANG=<código> pass secrets <identidade> ...` e confira que as chaves traduzidas saem certas e as faltantes caem no fallback.
+6. Abra um Pull Request com o `.json` novo e o `secrets.bash` regenerado.
+
+Nenhuma dessas etapas exige conhecimento de bash. `tools/gen-i18n.py` só precisa de Python 3 (nenhuma dependência externa) e é a única ferramenta necessária pra ir do `.json` traduzido até o `secrets.bash` final.
+
+### Outras formas de contribuir
+
+* **Relatar bugs e comportamentos inesperados** — principalmente em contexto não-interativo (scripts, cron), fronteiras entre identidades aninhadas, e qualquer coisa que pareça um caso extremo não coberto.
+* **Revisar segurança** — todo o modelo de ameaça do projeto (isolamento por identidade, verificação de assinatura do `.gpg-id`, validação de path traversal) está aberto a escrutínio; um PR com prova prática de uma falha (não só teoria) é sempre bem-vindo.
+* **Revisar traduções existentes** — mesmo sem ser tradutor "oficial" de um idioma, sinalizar uma tradução estranha ou incorreta via issue já ajuda.
+
+---
+
 ## 📄 Licença
 
 Este projeto é disponibilizado sob a mesma licença do projeto [password-store](https://www.passwordstore.org/) (GPLv2+).
